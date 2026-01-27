@@ -9,7 +9,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
-@SuppressWarnings("null")
 public class ChatService {
 
     @Autowired
@@ -18,11 +17,12 @@ public class ChatService {
     @Autowired
     private UserRepository userRepository;
 
+    @SuppressWarnings("null")
     public Chat startChat(String senderId, String receiverId) {
         // Verify both users exist
-        userRepository.findById(senderId)
+        userRepository.findById((String) senderId)
                 .orElseThrow(() -> new RuntimeException("Sender not found"));
-        userRepository.findById(receiverId)
+        userRepository.findById((String) receiverId)
                 .orElseThrow(() -> new RuntimeException("Receiver not found"));
 
         // Check if chat already exists
@@ -41,25 +41,29 @@ public class ChatService {
     }
 
     public Chat sendMessage(String chatId, String senderId, String content) {
-        Chat chat = chatRepository.findById(chatId)
-                .orElseThrow(() -> new RuntimeException("Chat not found"));
+        if (chatId != null) {
+            Chat chat = chatRepository.findById(chatId)
+                    .orElseThrow(() -> new RuntimeException("Chat not found"));
 
-        if (!chat.getSenderId().equals(senderId) && !chat.getReceiverId().equals(senderId)) {
-            throw new RuntimeException("Not authorized to send message in this chat");
+            if (!chat.getSenderId().equals(senderId) && !chat.getReceiverId().equals(senderId)) {
+                throw new RuntimeException("Not authorized to send message in this chat");
+            }
+
+            Chat.Message message = new Chat.Message();
+            message.setSenderId(senderId);
+            message.setContent(content);
+            message.setTimestamp(LocalDateTime.now());
+            message.setType(Chat.MessageType.TEXT);
+
+            chat.getMessages().add(message);
+            chat.setLastActivity(LocalDateTime.now());
+
+            return chatRepository.save(chat);
         }
-
-        Chat.Message message = new Chat.Message();
-        message.setSenderId(senderId);
-        message.setContent(content);
-        message.setTimestamp(LocalDateTime.now());
-        message.setType(Chat.MessageType.TEXT);
-
-        chat.getMessages().add(message);
-        chat.setLastActivity(LocalDateTime.now());
-
-        return chatRepository.save(chat);
+        throw new RuntimeException("Chat not found");
     }
 
+    @SuppressWarnings("null")
     public Chat markMessagesAsRead(String chatId, String userId) {
         Chat chat = chatRepository.findById(chatId)
                 .orElseThrow(() -> new RuntimeException("Chat not found"));
@@ -77,8 +81,9 @@ public class ChatService {
         return chatRepository.save(chat);
     }
 
+    @SuppressWarnings("null")
     public void reportChat(String chatId, String reporterId, String reason) {
-        Chat chat = chatRepository.findById(chatId)
+        Chat chat = chatRepository.findById((String) chatId)
                 .orElseThrow(() -> new RuntimeException("Chat not found"));
 
         if (!chat.getSenderId().equals(reporterId) && !chat.getReceiverId().equals(reporterId)) {

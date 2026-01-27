@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -23,23 +24,6 @@ public class AuthenticationController {
     public AuthenticationController(UserService userService, JwtUtil jwtUtil) {
         this.userService = userService;
         this.jwtUtil = jwtUtil;
-    }
-
-    @PostMapping("/check-email")
-    public ResponseEntity<?> checkEmail(@RequestBody Map<String, String> request) {
-        String email = request.get("email");
-        boolean exists = userService.emailExists(email);
-        return ResponseEntity.ok(Map.of("exists", exists));
-    }
-
-    @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
-        try {
-            userService.register(request.getEmail(), request.getPassword());
-            return ResponseEntity.ok(Map.of("message", "User registered successfully"));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
     }
 
     @PostMapping("/login")
@@ -63,6 +47,36 @@ public class AuthenticationController {
                     user.getEmail(),
                     user.getFullName(),
                     user.isProfileCompleted()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/check-email")
+    public ResponseEntity<?> checkEmail(@RequestBody Map<String, String> request) {
+        try {
+            String email = request.get("email");
+            boolean exists = userService.emailExists(email);
+
+            Map<String, Boolean> response = new HashMap<>();
+            response.put("exists", exists);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
+        try {
+            User newUser = userService.register(request.getEmail(), request.getPassword());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("id", newUser.getId());
+            response.put("email", newUser.getEmail());
+            response.put("message", "User registered successfully");
+
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

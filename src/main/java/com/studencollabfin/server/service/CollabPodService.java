@@ -1,20 +1,16 @@
 package com.studencollabfin.server.service;
 
+import com.studencollabfin.server.model.CollabPod;
+import com.studencollabfin.server.model.Message;
+import com.studencollabfin.server.repository.CollabPodRepository;
+import com.studencollabfin.server.repository.MessageRepository;
+import com.studencollabfin.server.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import com.studencollabfin.server.model.CollabPod;
-import com.studencollabfin.server.repository.CollabPodRepository;
-import com.studencollabfin.server.repository.PodMessageRepository;
-import com.studencollabfin.server.repository.PostRepository;
-import com.studencollabfin.server.repository.UserRepository;
-
 @Service
-@SuppressWarnings("null")
 public class CollabPodService {
 
     @Autowired
@@ -24,30 +20,14 @@ public class CollabPodService {
     private UserRepository userRepository;
 
     @Autowired
-    private PodMessageRepository podMessageRepository;
-
-    @Autowired
     private UserService userService;
 
     @Autowired
-    private PostRepository postRepository;
+    private MessageRepository messageRepository;
 
-    /**
-     * Get all public "LOOKING_FOR" pods (discovery page).
-     */
-    public List<CollabPod> getPublicPods() {
-        return collabPodRepository.findByType(CollabPod.PodType.LOOKING_FOR);
-    }
-
-    /**
-     * Get all pods where the user is a member (LOOKING_FOR or TEAM).
-     */
-    public List<CollabPod> getUserPods(String userId) {
-        return collabPodRepository.findByMemberIdsContaining(userId);
-    }
-
+    @SuppressWarnings("null")
     public CollabPod createPod(String creatorId, CollabPod pod) {
-        userRepository.findById(creatorId)
+        userRepository.findById((String) creatorId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         pod.setCreatorId(creatorId);
@@ -73,8 +53,9 @@ public class CollabPodService {
         return savedPod;
     }
 
+    @SuppressWarnings("null")
     public CollabPod joinPod(String podId, String userId) {
-        CollabPod pod = collabPodRepository.findById(podId)
+        CollabPod pod = collabPodRepository.findById((String) podId)
                 .orElseThrow(() -> new RuntimeException("CollabPod not found"));
 
         if (pod.getStatus() == CollabPod.PodStatus.FULL ||
@@ -92,8 +73,9 @@ public class CollabPodService {
         return collabPodRepository.save(pod);
     }
 
+    @SuppressWarnings("null")
     public CollabPod scheduleMeeting(String podId, String moderatorId, CollabPod.Meeting meeting) {
-        CollabPod pod = collabPodRepository.findById(podId)
+        CollabPod pod = collabPodRepository.findById((String) podId)
                 .orElseThrow(() -> new RuntimeException("CollabPod not found"));
 
         if (!pod.getModeratorIds().contains(moderatorId)) {
@@ -111,12 +93,20 @@ public class CollabPodService {
         return collabPodRepository.save(pod);
     }
 
+    public List<CollabPod> getUserPods(String userId) {
+        List<CollabPod> createdPods = collabPodRepository.findByCreatorId(userId);
+        List<CollabPod> joinedPods = collabPodRepository.findByMemberIdsContaining(userId);
+        createdPods.addAll(joinedPods);
+        return createdPods;
+    }
+
     public List<CollabPod> searchPodsByTopic(String topic) {
         return collabPodRepository.findByTopicsContaining(topic);
     }
 
+    @SuppressWarnings("null")
     public void leavePod(String podId, String userId) {
-        CollabPod pod = collabPodRepository.findById(podId)
+        CollabPod pod = collabPodRepository.findById((String) podId)
                 .orElseThrow(() -> new RuntimeException("CollabPod not found"));
 
         if (pod.getCreatorId().equals(userId)) {
@@ -135,23 +125,30 @@ public class CollabPodService {
         collabPodRepository.save(pod);
     }
 
-    @Transactional
-    public void deletePod(String podId, String requesterId) {
-        // Verify the requester is the pod owner
-        CollabPod pod = collabPodRepository.findById(podId)
-                .orElseThrow(() -> new RuntimeException("Pod not found"));
+    public List<Message> getMessagesForPod(String podId) {
+        // The podId is used as the conversationId for messages
+        return messageRepository.findByConversationIdOrderBySentAtAsc(podId);
+    }
 
-        if (!pod.getCreatorId().equals(requesterId)) {
-            throw new RuntimeException("Only the pod owner can delete this pod");
+    public Message saveMessage(Message message) {
+        // Ensure conversationId is set from podId if not already set
+        if (message.getConversationId() == null && message.getPodId() != null) {
+            message.setConversationId(message.getPodId());
         }
-
-        // 1. Delete all chat messages for this pod
-        podMessageRepository.deleteByPodId(podId);
-
-        // 2. Delete the linked "Looking For" post (cascade delete)
-        postRepository.deleteByLinkedPodId(podId);
-
-        // 3. Delete the pod itself
-        collabPodRepository.deleteById(podId);
+        
+        // Set sentAt if not provided
+        if (message.getSentAt() == null) {
+            message.setSentAt(new java.util.Date());
+        }
+        
+        // If content is provided instead of text, use content as text
+        if (message.getText() == null && message.getContent() != null) {
+            message.setText(message.getContent());
+        }
+        
+        // Default to unread status
+        message.setRead(false);
+        
+        return messageRepository.save(message);
     }
 }

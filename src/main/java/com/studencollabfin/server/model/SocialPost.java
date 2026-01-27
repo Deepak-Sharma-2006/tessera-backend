@@ -18,6 +18,7 @@ public class SocialPost extends Post {
     private List<Comment> comments = new ArrayList<>();
     private List<PollOption> pollOptions = new ArrayList<>();
     private PostType type = PostType.ASK_HELP;
+    private String category = "CAMPUS"; // INTER or CAMPUS to distinguish where polls are shown
     // Optional fields for linking to created pods or listing required skills
     private String linkedPodId;
     private List<String> requiredSkills = new ArrayList<>();

@@ -21,6 +21,7 @@ public class BuddyBeacon {
     private int maxTeamSize;
     private List<String> currentTeamMemberIds;
     private String status;
+    private List<String> applicants; // For tracking users who applied to this beacon
 
     // Add this annotation to handle the date format correctly
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")

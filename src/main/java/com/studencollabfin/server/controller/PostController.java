@@ -1,63 +1,70 @@
 package com.studencollabfin.server.controller;
 
-import java.util.List;
-
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.aggregation.Aggregation;
-import org.springframework.data.mongodb.core.aggregation.AggregationResults;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-
-import com.studencollabfin.server.dto.CommentRequest;
 import com.studencollabfin.server.model.Post;
 import com.studencollabfin.server.model.SocialPost;
 import com.studencollabfin.server.model.TeamFindingPost;
 import com.studencollabfin.server.service.PostService;
-import com.studencollabfin.server.service.UserService;
-
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.aggregation.AggregationResults;
+import org.springframework.data.mongodb.core.query.Criteria;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+import jakarta.servlet.http.HttpServletRequest;
+import java.util.List;
+import com.studencollabfin.server.dto.CommentRequest;
 
 @RestController
 @RequestMapping("/api/posts")
 @RequiredArgsConstructor
-@SuppressWarnings("null")
+@CrossOrigin(origins = "http://localhost:5173", allowCredentials = "true")
 public class PostController {
+
+    @PutMapping("/{postId}/like")
+    public ResponseEntity<SocialPost> toggleLike(@PathVariable String postId, Authentication authentication,
+            HttpServletRequest request) {
+        String userId = getCurrentUserId(authentication, request);
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(postService.toggleLike(postId, userId));
+    }
+
     // Poll voting endpoint
     @PutMapping("/{postId}/vote/{optionId}")
-    public ResponseEntity<Post> voteOnPollOption(@PathVariable String postId, @PathVariable int optionId) {
-        // Simulate current user ID (replace with real user ID in production)
-        String userId = getCurrentUserId();
+    public ResponseEntity<Post> voteOnPollOption(@PathVariable String postId, @PathVariable String optionId,
+            Authentication authentication, HttpServletRequest request) {
+        String userId = getCurrentUserId(authentication, request);
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         Post updatedPost = postService.voteOnPollOption(postId, optionId, userId);
         return ResponseEntity.ok(updatedPost);
     }
 
     private final PostService postService;
     private final MongoTemplate mongoTemplate;
-    private final UserService userService;
 
-    // A placeholder for getting the current user's ID
-    @org.springframework.beans.factory.annotation.Autowired
-    private jakarta.servlet.http.HttpServletRequest request;
-
-    private String getCurrentUserId() {
-        // Try to get userId from X-User-Id header first
-        String userIdFromHeader = request.getHeader("X-User-Id");
-        if (userIdFromHeader != null && !userIdFromHeader.isEmpty()) {
-            return userIdFromHeader;
+    // Extracts user ID from Authentication or X-User-Id header
+    private String getCurrentUserId(Authentication authentication, HttpServletRequest request) {
+        // Try Authentication object first (Spring Security)
+        if (authentication != null && authentication.getPrincipal() != null) {
+            Object principal = authentication.getPrincipal();
+            if (principal instanceof org.springframework.security.core.userdetails.UserDetails) {
+                return ((org.springframework.security.core.userdetails.UserDetails) principal).getUsername();
+            }
+            return principal.toString();
         }
-        // Fallback to placeholder if not provided
-        return "placeholder-user-id";
+
+        // Fall back to X-User-Id header
+        String userId = request.getHeader("X-User-Id");
+        if (userId != null && !userId.trim().isEmpty()) {
+            return userId;
+        }
+
+        // Default fallback
+        return null;
     }
 
     @GetMapping
@@ -94,19 +101,21 @@ public class PostController {
                 com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
                 richPost.put("title", social.getTitle() != null ? social.getTitle() : "");
                 richPost.put("content", social.getContent());
+                richPost.put("type", social.getType() != null ? social.getType().name() : "");
                 richPost.put("postType", social.getType() != null ? social.getType().name() : "");
                 richPost.put("likes", social.getLikes() != null ? social.getLikes() : new java.util.ArrayList<>());
                 richPost.put("comments",
                         social.getComments() != null ? social.getComments() : new java.util.ArrayList<>());
                 richPost.put("pollOptions",
                         social.getPollOptions() != null ? social.getPollOptions() : new java.util.ArrayList<>());
-                // Ensure linkedPodId is included in the response
-                richPost.put("linkedPodId", social.getLinkedPodId());
+                richPost.put("requiredSkills",
+                        social.getRequiredSkills() != null ? social.getRequiredSkills() : new java.util.ArrayList<>());
             } else if (post instanceof com.studencollabfin.server.model.TeamFindingPost) {
                 com.studencollabfin.server.model.TeamFindingPost team = (com.studencollabfin.server.model.TeamFindingPost) post;
                 richPost.put("title", team.getContent());
                 richPost.put("content", team.getContent());
-                richPost.put("postType", "team-finding");
+                richPost.put("type", "LOOKING_FOR");
+                richPost.put("postType", "LOOKING_FOR");
                 richPost.put("requiredSkills",
                         team.getRequiredSkills() != null ? team.getRequiredSkills() : new java.util.ArrayList<>());
                 richPost.put("maxTeamSize", team.getMaxTeamSize());
@@ -115,52 +124,161 @@ public class PostController {
             } else {
                 richPost.put("title", post.getContent());
                 richPost.put("content", post.getContent());
-                richPost.put("postType", "post");
+                richPost.put("type", "GENERAL");
+                richPost.put("postType", "GENERAL");
             }
             richPosts.add(richPost);
         }
         return ResponseEntity.ok(richPosts);
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<Object> getPostById(@PathVariable String id) {
+    @PostMapping("/social")
+    public ResponseEntity<?> createSocialPost(@RequestBody SocialPost socialPost, Authentication authentication,
+            HttpServletRequest request) {
         try {
-            Post post = postService.getPostById(id);
-            java.util.Map<String, Object> richPost = new java.util.HashMap<>();
-            richPost.put("id", post.getId());
-            richPost.put("authorId", post.getAuthorId());
-            richPost.put("createdAt", post.getCreatedAt() != null ? post.getCreatedAt().toString() : "");
-            if (post instanceof com.studencollabfin.server.model.SocialPost) {
-                com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
-                richPost.put("title", social.getTitle() != null ? social.getTitle() : "");
-                richPost.put("content", social.getContent());
-                richPost.put("postType", social.getType() != null ? social.getType().name() : "");
-                richPost.put("likes", social.getLikes() != null ? social.getLikes() : new java.util.ArrayList<>());
-                richPost.put("comments",
-                        social.getComments() != null ? social.getComments() : new java.util.ArrayList<>());
-                richPost.put("pollOptions",
-                        social.getPollOptions() != null ? social.getPollOptions() : new java.util.ArrayList<>());
-                // Ensure linkedPodId is included in the response
-                richPost.put("linkedPodId", social.getLinkedPodId());
-            } else if (post instanceof com.studencollabfin.server.model.TeamFindingPost) {
-                com.studencollabfin.server.model.TeamFindingPost team = (com.studencollabfin.server.model.TeamFindingPost) post;
-                richPost.put("title", team.getContent());
-                richPost.put("content", team.getContent());
-                richPost.put("postType", "team-finding");
-                richPost.put("requiredSkills",
-                        team.getRequiredSkills() != null ? team.getRequiredSkills() : new java.util.ArrayList<>());
-                richPost.put("maxTeamSize", team.getMaxTeamSize());
-                richPost.put("currentTeamMembers", team.getCurrentTeamMembers() != null ? team.getCurrentTeamMembers()
-                        : new java.util.ArrayList<>());
-            } else {
-                richPost.put("title", post.getContent());
-                richPost.put("content", post.getContent());
-                richPost.put("postType", "post");
-            }
-            return ResponseEntity.ok(richPost);
+            System.out.println("Incoming SocialPost: " + socialPost.getTitle());
+            System.out.println("Type: " + socialPost.getType());
+            System.out.println("Content: " + socialPost.getContent());
+            String userId = getCurrentUserId(authentication, request);
+            System.out.println("Author ID: " + userId);
+            Post createdPost = postService.createPost(socialPost, userId);
+            System.out.println("Post created successfully with ID: " + createdPost.getId());
+            return ResponseEntity.status(HttpStatus.CREATED).body(createdPost);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Post not found");
+            e.printStackTrace();
+            System.err.println("Error creating post: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
+    }
+
+    @PostMapping("/team-finding")
+    public ResponseEntity<Post> createTeamFindingPost(@RequestBody TeamFindingPost teamFindingPost,
+            Authentication authentication, HttpServletRequest request) {
+        String userId = getCurrentUserId(authentication, request);
+
+        // Log for debugging
+        System.out.println("[DEBUG] Creating team post - userId: " + userId);
+        System.out.println("[DEBUG] Authentication: " + authentication);
+        String headerUserId = request.getHeader("X-User-Id");
+        System.out.println("[DEBUG] X-User-Id header: " + headerUserId);
+
+        // Fallback: if userId is still null, generate a temporary one
+        if (userId == null || userId.trim().isEmpty()) {
+            userId = "user-" + System.currentTimeMillis();
+            System.out.println("[DEBUG] Using fallback userId: " + userId);
+        }
+
+        Post createdPost = postService.createPost(teamFindingPost, userId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(createdPost);
+    }
+
+    // Separate endpoints for Campus Feed posts
+    @GetMapping("/campus")
+    public ResponseEntity<List<Object>> getCampusPosts(@RequestParam(required = false) String type) {
+        try {
+            List<Post> posts = postService.getAllPosts();
+            System.out.println("Total posts from DB: " + posts.size());
+
+            java.util.List<com.studencollabfin.server.model.PostType> campusTypes = java.util.Arrays.asList(
+                    com.studencollabfin.server.model.PostType.ASK_HELP,
+                    com.studencollabfin.server.model.PostType.OFFER_HELP,
+                    com.studencollabfin.server.model.PostType.LOOKING_FOR,
+                    com.studencollabfin.server.model.PostType.POLL);
+
+            // Filter for campus posts only
+            java.util.List<Post> campusPosts = new java.util.ArrayList<>();
+            for (Post post : posts) {
+                if (post instanceof com.studencollabfin.server.model.SocialPost) {
+                    com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
+                    if (campusTypes.contains(social.getType())) {
+                        campusPosts.add(post);
+                    }
+                } else if (post instanceof com.studencollabfin.server.model.TeamFindingPost) {
+                    campusPosts.add(post);
+                }
+            }
+            System.out.println("Campus posts filtered: " + campusPosts.size());
+
+            // Apply type filter if provided
+            if (type != null && !type.isBlank()) {
+                try {
+                    com.studencollabfin.server.model.PostType ptype = com.studencollabfin.server.model.PostType
+                            .valueOf(type);
+                    java.util.List<Post> filtered = new java.util.ArrayList<>();
+                    for (Post post : campusPosts) {
+                        if (post instanceof com.studencollabfin.server.model.SocialPost) {
+                            com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
+                            if (social.getType() == ptype)
+                                filtered.add(post);
+                        }
+                    }
+                    campusPosts = filtered;
+                } catch (IllegalArgumentException ex) {
+                    // unknown type - ignore
+                }
+            }
+
+            return ResponseEntity.ok(convertToRichPosts(campusPosts));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(new java.util.ArrayList<>());
+        }
+    }
+
+    // Separate endpoints for Inter Feed posts
+    @GetMapping("/inter")
+    public ResponseEntity<List<Object>> getInterPosts(@RequestParam(required = false) String type) {
+        try {
+            List<Post> posts = postService.getAllPosts();
+            System.out.println("Total posts from DB: " + posts.size());
+
+            java.util.List<com.studencollabfin.server.model.PostType> interTypes = java.util.Arrays.asList(
+                    com.studencollabfin.server.model.PostType.DISCUSSION,
+                    com.studencollabfin.server.model.PostType.COLLAB,
+                    com.studencollabfin.server.model.PostType.POLL);
+
+            // Filter for inter posts only
+            java.util.List<Post> interPosts = new java.util.ArrayList<>();
+            for (Post post : posts) {
+                if (post instanceof com.studencollabfin.server.model.SocialPost) {
+                    com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
+                    if (interTypes.contains(social.getType())) {
+                        interPosts.add(post);
+                    }
+                }
+            }
+            System.out.println("Inter posts filtered: " + interPosts.size());
+
+            // Apply type filter if provided
+            if (type != null && !type.isBlank()) {
+                try {
+                    com.studencollabfin.server.model.PostType ptype = com.studencollabfin.server.model.PostType
+                            .valueOf(type);
+                    java.util.List<Post> filtered = new java.util.ArrayList<>();
+                    for (Post post : interPosts) {
+                        if (post instanceof com.studencollabfin.server.model.SocialPost) {
+                            com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
+                            if (social.getType() == ptype)
+                                filtered.add(post);
+                        }
+                    }
+                    interPosts = filtered;
+                } catch (IllegalArgumentException ex) {
+                    // unknown type - ignore
+                }
+            }
+
+            return ResponseEntity.ok(convertToRichPosts(interPosts));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(new java.util.ArrayList<>());
+        }
+    }
+
+    @PostMapping("/{postId}/comment")
+    public ResponseEntity<Object> addCommentToPost(@PathVariable String postId, @RequestBody CommentRequest req) {
+        com.studencollabfin.server.model.SocialPost.Comment saved = postService.addCommentToPost(postId, req);
+        return ResponseEntity.ok(saved);
     }
 
     @GetMapping("/counts")
@@ -187,52 +305,97 @@ public class PostController {
         return ResponseEntity.ok(counts);
     }
 
-    @PostMapping("/social")
-    public ResponseEntity<?> createSocialPost(@RequestBody SocialPost socialPost,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        if (userDetails == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Authentication required");
-        }
-        try {
-            System.out.println(
-                    "Creating post of type: " + (socialPost.getType() != null ? socialPost.getType().name() : "null"));
+    @GetMapping("/campus/counts")
+    public ResponseEntity<java.util.Map<String, Long>> getCampusPostCounts() {
+        java.util.Map<String, Long> counts = new java.util.HashMap<>();
+        java.util.List<com.studencollabfin.server.model.PostType> campusTypes = java.util.Arrays.asList(
+                com.studencollabfin.server.model.PostType.ASK_HELP,
+                com.studencollabfin.server.model.PostType.OFFER_HELP,
+                com.studencollabfin.server.model.PostType.LOOKING_FOR,
+                com.studencollabfin.server.model.PostType.POLL);
 
-            // Extract the authenticated user from JWT
-            com.studencollabfin.server.model.User user = userService.findByEmail(userDetails.getUsername());
-            if (user == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
+        // Get all posts and count by type for campus
+        List<Post> allPosts = postService.getAllPosts();
+        for (com.studencollabfin.server.model.PostType ptype : campusTypes) {
+            long count = 0;
+            for (Post post : allPosts) {
+                if (post instanceof com.studencollabfin.server.model.SocialPost) {
+                    com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
+                    if (social.getType() == ptype)
+                        count++;
+                }
             }
-
-            Post createdPost = postService.createPost(socialPost, user.getId());
-            return ResponseEntity.status(HttpStatus.CREATED).body(createdPost);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+            counts.put(ptype.name(), count);
         }
+        return ResponseEntity.ok(counts);
     }
 
-    @PostMapping("/team-finding")
-    public ResponseEntity<?> createTeamFindingPost(@RequestBody TeamFindingPost teamFindingPost,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        if (userDetails == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Authentication required");
-        }
-        try {
-            // Extract the authenticated user from JWT
-            com.studencollabfin.server.model.User user = userService.findByEmail(userDetails.getUsername());
-            if (user == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
+    @GetMapping("/inter/counts")
+    public ResponseEntity<java.util.Map<String, Long>> getInterPostCounts() {
+        java.util.Map<String, Long> counts = new java.util.HashMap<>();
+        java.util.List<com.studencollabfin.server.model.PostType> interTypes = java.util.Arrays.asList(
+                com.studencollabfin.server.model.PostType.DISCUSSION,
+                com.studencollabfin.server.model.PostType.COLLAB,
+                com.studencollabfin.server.model.PostType.POLL);
+
+        // Get all posts and count by type for inter
+        List<Post> allPosts = postService.getAllPosts();
+        for (com.studencollabfin.server.model.PostType ptype : interTypes) {
+            long count = 0;
+            for (Post post : allPosts) {
+                if (post instanceof com.studencollabfin.server.model.SocialPost) {
+                    com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
+                    if (social.getType() == ptype)
+                        count++;
+                }
             }
-            Post createdPost = postService.createPost(teamFindingPost, user.getId());
-            return ResponseEntity.status(HttpStatus.CREATED).body(createdPost);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+            counts.put(ptype.name(), count);
         }
+        return ResponseEntity.ok(counts);
     }
 
-    @PostMapping("/{postId}/comment")
-    public ResponseEntity<Object> addCommentToPost(@PathVariable String postId, @RequestBody CommentRequest req) {
-        com.studencollabfin.server.model.SocialPost.Comment saved = postService.addCommentToPost(postId, req);
-        return ResponseEntity.ok(saved);
+    @GetMapping("/{id}")
+    public ResponseEntity<Object> getPostById(@PathVariable String id) {
+        try {
+            Post post = postService.getPostById(id);
+            java.util.Map<String, Object> richPost = new java.util.HashMap<>();
+            richPost.put("id", post.getId());
+            richPost.put("authorId", post.getAuthorId());
+            richPost.put("createdAt", post.getCreatedAt() != null ? post.getCreatedAt().toString() : "");
+            if (post instanceof com.studencollabfin.server.model.SocialPost) {
+                com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
+                richPost.put("title", social.getTitle() != null ? social.getTitle() : "");
+                richPost.put("content", social.getContent());
+                richPost.put("type", social.getType() != null ? social.getType().name() : "");
+                richPost.put("postType", social.getType() != null ? social.getType().name() : "");
+                richPost.put("likes", social.getLikes() != null ? social.getLikes() : new java.util.ArrayList<>());
+                richPost.put("comments",
+                        social.getComments() != null ? social.getComments() : new java.util.ArrayList<>());
+                richPost.put("pollOptions",
+                        social.getPollOptions() != null ? social.getPollOptions() : new java.util.ArrayList<>());
+                richPost.put("requiredSkills",
+                        social.getRequiredSkills() != null ? social.getRequiredSkills() : new java.util.ArrayList<>());
+            } else if (post instanceof com.studencollabfin.server.model.TeamFindingPost) {
+                com.studencollabfin.server.model.TeamFindingPost team = (com.studencollabfin.server.model.TeamFindingPost) post;
+                richPost.put("title", team.getContent());
+                richPost.put("content", team.getContent());
+                richPost.put("type", "LOOKING_FOR");
+                richPost.put("postType", "LOOKING_FOR");
+                richPost.put("requiredSkills",
+                        team.getRequiredSkills() != null ? team.getRequiredSkills() : new java.util.ArrayList<>());
+                richPost.put("maxTeamSize", team.getMaxTeamSize());
+                richPost.put("currentTeamMembers", team.getCurrentTeamMembers() != null ? team.getCurrentTeamMembers()
+                        : new java.util.ArrayList<>());
+            } else {
+                richPost.put("title", post.getContent());
+                richPost.put("content", post.getContent());
+                richPost.put("type", "GENERAL");
+                richPost.put("postType", "GENERAL");
+            }
+            return ResponseEntity.ok(richPost);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Post not found");
+        }
     }
 
     // Fetch TeamFindingPosts by eventId
@@ -280,5 +443,48 @@ public class PostController {
             richPosts.add(richPost);
         }
         return ResponseEntity.ok(richPosts);
+    }
+
+    // Helper method to convert posts to rich format
+    private List<Object> convertToRichPosts(List<Post> posts) {
+        List<Object> richPosts = new java.util.ArrayList<>();
+        for (Post post : posts) {
+            java.util.Map<String, Object> richPost = new java.util.HashMap<>();
+            richPost.put("id", post.getId());
+            richPost.put("authorId", post.getAuthorId());
+            richPost.put("createdAt", post.getCreatedAt() != null ? post.getCreatedAt().toString() : "");
+            if (post instanceof com.studencollabfin.server.model.SocialPost) {
+                com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
+                richPost.put("title", social.getTitle() != null ? social.getTitle() : "");
+                richPost.put("content", social.getContent());
+                richPost.put("type", social.getType() != null ? social.getType().name() : "");
+                richPost.put("postType", social.getType() != null ? social.getType().name() : "");
+                richPost.put("likes", social.getLikes() != null ? social.getLikes() : new java.util.ArrayList<>());
+                richPost.put("comments",
+                        social.getComments() != null ? social.getComments() : new java.util.ArrayList<>());
+                richPost.put("pollOptions",
+                        social.getPollOptions() != null ? social.getPollOptions() : new java.util.ArrayList<>());
+                richPost.put("requiredSkills",
+                        social.getRequiredSkills() != null ? social.getRequiredSkills() : new java.util.ArrayList<>());
+            } else if (post instanceof com.studencollabfin.server.model.TeamFindingPost) {
+                com.studencollabfin.server.model.TeamFindingPost team = (com.studencollabfin.server.model.TeamFindingPost) post;
+                richPost.put("title", team.getContent());
+                richPost.put("content", team.getContent());
+                richPost.put("type", "LOOKING_FOR");
+                richPost.put("postType", "LOOKING_FOR");
+                richPost.put("requiredSkills",
+                        team.getRequiredSkills() != null ? team.getRequiredSkills() : new java.util.ArrayList<>());
+                richPost.put("maxTeamSize", team.getMaxTeamSize());
+                richPost.put("currentTeamMembers", team.getCurrentTeamMembers() != null ? team.getCurrentTeamMembers()
+                        : new java.util.ArrayList<>());
+            } else {
+                richPost.put("title", post.getContent());
+                richPost.put("content", post.getContent());
+                richPost.put("type", "GENERAL");
+                richPost.put("postType", "GENERAL");
+            }
+            richPosts.add(richPost);
+        }
+        return richPosts;
     }
 }

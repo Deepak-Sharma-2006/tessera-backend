@@ -1,28 +1,13 @@
 package com.studencollabfin.server.service;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-
+import com.studencollabfin.server.model.*;
+import com.studencollabfin.server.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
-import com.studencollabfin.server.model.Application;
-import com.studencollabfin.server.model.BuddyBeacon;
-import com.studencollabfin.server.model.Post;
-import com.studencollabfin.server.model.PostState;
-import com.studencollabfin.server.model.RejectionReason;
-import com.studencollabfin.server.model.TeamFindingPost;
-import com.studencollabfin.server.repository.ApplicationRepository;
-import com.studencollabfin.server.repository.BuddyBeaconRepository;
-import com.studencollabfin.server.repository.PostRepository;
-import com.studencollabfin.server.repository.UserRepository;
+import java.time.LocalDateTime;
+import java.util.*;
 
 @Service
-@SuppressWarnings("null")
 public class BuddyBeaconService {
     @Autowired
     private BuddyBeaconRepository beaconRepository;
@@ -107,17 +92,23 @@ public class BuddyBeaconService {
             map.put("applicationStatus", app.getStatus());
             map.put("beaconId", app.getBeaconId());
             // Try BuddyBeacon
-            beaconRepository.findById(app.getBeaconId()).ifPresent(beacon -> {
-                map.put("postType", "BuddyBeacon");
-                map.put("post", beacon);
-            });
-            // Try TeamFindingPost
-            postRepository.findById(app.getBeaconId()).ifPresent(post -> {
-                if (post instanceof TeamFindingPost tfp) {
-                    map.put("postType", "TeamFindingPost");
-                    map.put("post", tfp);
-                }
-            });
+            if (app.getBeaconId() != null) {
+                @SuppressWarnings("null")
+                var beaconOpt = beaconRepository.findById((String) app.getBeaconId());
+                beaconOpt.ifPresent(beacon -> {
+                    map.put("postType", "BuddyBeacon");
+                    map.put("post", beacon);
+                });
+                // Try TeamFindingPost
+                @SuppressWarnings("null")
+                var postOpt = postRepository.findById((String) app.getBeaconId());
+                postOpt.ifPresent(post -> {
+                    if (post instanceof TeamFindingPost tfp) {
+                        map.put("postType", "TeamFindingPost");
+                        map.put("post", tfp);
+                    }
+                });
+            }
             result.add(map);
         }
         return result;
@@ -129,6 +120,12 @@ public class BuddyBeaconService {
      */
     public List<Map<String, Object>> getMyPosts(String userId) {
         List<Map<String, Object>> result = new ArrayList<>();
+
+        // Handle null or empty userId - return empty list
+        if (userId == null || userId.trim().isEmpty()) {
+            return result;
+        }
+
         // BuddyBeacon posts
         List<BuddyBeacon> myBeacons = beaconRepository.findAll().stream()
                 .filter(b -> userId.equals(b.getAuthorId()))
@@ -141,7 +138,11 @@ public class BuddyBeaconService {
             for (Application app : apps) {
                 Map<String, Object> applicant = new HashMap<>();
                 applicant.put("application", app);
-                userRepository.findById(app.getApplicantId()).ifPresent(u -> applicant.put("profile", u));
+                if (app.getApplicantId() != null) {
+                    @SuppressWarnings("null")
+                    var userOpt = userRepository.findById((String) app.getApplicantId());
+                    userOpt.ifPresent(u -> applicant.put("profile", u));
+                }
                 applicants.add(applicant);
             }
             postMap.put("applicants", applicants);
@@ -160,7 +161,11 @@ public class BuddyBeaconService {
             for (Application app : apps) {
                 Map<String, Object> applicant = new HashMap<>();
                 applicant.put("application", app);
-                userRepository.findById(app.getApplicantId()).ifPresent(u -> applicant.put("profile", u));
+                if (app.getApplicantId() != null) {
+                    @SuppressWarnings("null")
+                    var userOpt = userRepository.findById((String) app.getApplicantId());
+                    userOpt.ifPresent(u -> applicant.put("profile", u));
+                }
                 applicants.add(applicant);
             }
             postMap.put("applicants", applicants);
@@ -172,10 +177,11 @@ public class BuddyBeaconService {
     /**
      * Application logic: Only allow if post is ACTIVE (<20h).
      */
+    @SuppressWarnings("null")
     public Application applyToBeaconPost(String beaconId, String applicantId, Application application) {
         System.out.println("Received beaconId: " + beaconId); // Debugging beaconId
         // Try BuddyBeacon first
-        Optional<BuddyBeacon> beaconOpt = beaconRepository.findById(beaconId);
+        Optional<BuddyBeacon> beaconOpt = beaconRepository.findById((String) beaconId);
         if (beaconOpt.isPresent()) {
             BuddyBeacon beacon = beaconOpt.get();
             if (beacon.getCreatedAt() != null) {
@@ -190,7 +196,7 @@ public class BuddyBeaconService {
             return applicationRepository.save(application);
         }
         // Try TeamFindingPost
-        Optional<Post> postOpt = postRepository.findById(beaconId);
+        Optional<Post> postOpt = postRepository.findById((String) beaconId);
         if (postOpt.isPresent() && postOpt.get() instanceof TeamFindingPost teamPost) {
             if (teamPost.computePostState() != PostState.ACTIVE) {
                 throw new RuntimeException("Applications are closed for this post");
@@ -209,43 +215,51 @@ public class BuddyBeaconService {
      */
     public Application acceptApplication(String postId, String applicationId, String userId) {
         // Try BuddyBeacon
-        Optional<BuddyBeacon> beaconOpt = beaconRepository.findById(postId);
-        if (beaconOpt.isPresent()) {
-            BuddyBeacon beacon = beaconOpt.get();
-            if (!userId.equals(beacon.getAuthorId()))
-                throw new RuntimeException("Not authorized");
-            Application app = applicationRepository.findById(applicationId).orElseThrow();
-            if (app.getStatus() != Application.Status.PENDING)
-                throw new RuntimeException("Already processed");
-            List<String> members = beacon.getCurrentTeamMemberIds();
-            if (members.size() >= beacon.getMaxTeamSize())
-                throw new RuntimeException("Team is full");
-            app.setStatus(Application.Status.ACCEPTED);
-            members.add(app.getApplicantId());
-            beacon.setCurrentTeamMemberIds(members);
-            beaconRepository.save(beacon);
-            // TODO: Send Collab Pod invitation logic here
-            return applicationRepository.save(app);
+        if (postId != null) {
+            Optional<BuddyBeacon> beaconOpt = beaconRepository.findById(postId);
+            if (beaconOpt.isPresent()) {
+                BuddyBeacon beacon = beaconOpt.get();
+                if (!userId.equals(beacon.getAuthorId()))
+                    throw new RuntimeException("Not authorized");
+                if (applicationId != null) {
+                    Application app = applicationRepository.findById(applicationId).orElseThrow();
+                    if (app.getStatus() != Application.Status.PENDING)
+                        throw new RuntimeException("Already processed");
+                    List<String> members = beacon.getCurrentTeamMemberIds();
+                    if (members.size() >= beacon.getMaxTeamSize())
+                        throw new RuntimeException("Team is full");
+                    app.setStatus(Application.Status.ACCEPTED);
+                    members.add(app.getApplicantId());
+                    beacon.setCurrentTeamMemberIds(members);
+                    beaconRepository.save(beacon);
+                    // TODO: Send Collab Pod invitation logic here
+                    return applicationRepository.save(app);
+                }
+            }
         }
         // Try TeamFindingPost
-        Optional<Post> postOpt = postRepository.findById(postId);
-        if (postOpt.isPresent() && postOpt.get() instanceof TeamFindingPost teamPost) {
-            if (!userId.equals(teamPost.getAuthorId()))
-                throw new RuntimeException("Not authorized");
-            Application app = applicationRepository.findById(applicationId).orElseThrow();
-            if (app.getStatus() != Application.Status.PENDING)
-                throw new RuntimeException("Already processed");
-            List<String> members = teamPost.getCurrentTeamMembers();
-            if (members == null)
-                members = new ArrayList<>();
-            if (members.size() >= teamPost.getMaxTeamSize())
-                throw new RuntimeException("Team is full");
-            app.setStatus(Application.Status.ACCEPTED);
-            members.add(app.getApplicantId());
-            teamPost.setCurrentTeamMembers(members);
-            postRepository.save(teamPost);
-            // TODO: Send Collab Pod invitation logic here
-            return applicationRepository.save(app);
+        if (postId != null) {
+            Optional<Post> postOpt = postRepository.findById(postId);
+            if (postOpt.isPresent() && postOpt.get() instanceof TeamFindingPost teamPost) {
+                if (!userId.equals(teamPost.getAuthorId()))
+                    throw new RuntimeException("Not authorized");
+                if (applicationId != null) {
+                    Application app = applicationRepository.findById(applicationId).orElseThrow();
+                    if (app.getStatus() != Application.Status.PENDING)
+                        throw new RuntimeException("Already processed");
+                    List<String> members = teamPost.getCurrentTeamMembers();
+                    if (members == null)
+                        members = new ArrayList<>();
+                    if (members.size() >= teamPost.getMaxTeamSize())
+                        throw new RuntimeException("Team is full");
+                    app.setStatus(Application.Status.ACCEPTED);
+                    members.add(app.getApplicantId());
+                    teamPost.setCurrentTeamMembers(members);
+                    postRepository.save(teamPost);
+                    // TODO: Send Collab Pod invitation logic here
+                    return applicationRepository.save(app);
+                }
+            }
         }
         throw new RuntimeException("Post not found");
     }
@@ -256,31 +270,39 @@ public class BuddyBeaconService {
     public Application rejectApplication(String postId, String applicationId, String userId, RejectionReason reason,
             String note) {
         // Try BuddyBeacon
-        Optional<BuddyBeacon> beaconOpt = beaconRepository.findById(postId);
-        if (beaconOpt.isPresent()) {
-            BuddyBeacon beacon = beaconOpt.get();
-            if (!userId.equals(beacon.getAuthorId()))
-                throw new RuntimeException("Not authorized");
-            Application app = applicationRepository.findById(applicationId).orElseThrow();
-            if (app.getStatus() != Application.Status.PENDING)
-                throw new RuntimeException("Already processed");
-            app.setStatus(Application.Status.REJECTED);
-            app.setRejectionReason(reason);
-            app.setRejectionNote(note);
-            return applicationRepository.save(app);
+        if (postId != null) {
+            Optional<BuddyBeacon> beaconOpt = beaconRepository.findById(postId);
+            if (beaconOpt.isPresent()) {
+                BuddyBeacon beacon = beaconOpt.get();
+                if (!userId.equals(beacon.getAuthorId()))
+                    throw new RuntimeException("Not authorized");
+                if (applicationId != null) {
+                    Application app = applicationRepository.findById(applicationId).orElseThrow();
+                    if (app.getStatus() != Application.Status.PENDING)
+                        throw new RuntimeException("Already processed");
+                    app.setStatus(Application.Status.REJECTED);
+                    app.setRejectionReason(reason);
+                    app.setRejectionNote(note);
+                    return applicationRepository.save(app);
+                }
+            }
         }
         // Try TeamFindingPost
-        Optional<Post> postOpt = postRepository.findById(postId);
-        if (postOpt.isPresent() && postOpt.get() instanceof TeamFindingPost teamPost) {
-            if (!userId.equals(teamPost.getAuthorId()))
-                throw new RuntimeException("Not authorized");
-            Application app = applicationRepository.findById(applicationId).orElseThrow();
-            if (app.getStatus() != Application.Status.PENDING)
-                throw new RuntimeException("Already processed");
-            app.setStatus(Application.Status.REJECTED);
-            app.setRejectionReason(reason);
-            app.setRejectionNote(note);
-            return applicationRepository.save(app);
+        if (postId != null) {
+            Optional<Post> postOpt = postRepository.findById(postId);
+            if (postOpt.isPresent() && postOpt.get() instanceof TeamFindingPost teamPost) {
+                if (!userId.equals(teamPost.getAuthorId()))
+                    throw new RuntimeException("Not authorized");
+                if (applicationId != null) {
+                    Application app = applicationRepository.findById(applicationId).orElseThrow();
+                    if (app.getStatus() != Application.Status.PENDING)
+                        throw new RuntimeException("Already processed");
+                    app.setStatus(Application.Status.REJECTED);
+                    app.setRejectionReason(reason);
+                    app.setRejectionNote(note);
+                    return applicationRepository.save(app);
+                }
+            }
         }
         throw new RuntimeException("Post not found");
     }
@@ -290,29 +312,33 @@ public class BuddyBeaconService {
      */
     public void deleteMyPost(String postId, String userId) {
         // Try BuddyBeacon
-        Optional<BuddyBeacon> beaconOpt = beaconRepository.findById(postId);
-        if (beaconOpt.isPresent()) {
-            BuddyBeacon beacon = beaconOpt.get();
-            if (!userId.equals(beacon.getAuthorId()))
-                throw new RuntimeException("Not authorized");
-            // Allow delete if EXPIRED (older than 24h)
-            if (beacon.getCreatedAt() != null) {
-                long hours = java.time.Duration.between(beacon.getCreatedAt(), LocalDateTime.now()).toHours();
-                if (hours < 24)
-                    throw new RuntimeException("Cannot delete active post");
+        if (postId != null) {
+            Optional<BuddyBeacon> beaconOpt = beaconRepository.findById(postId);
+            if (beaconOpt.isPresent()) {
+                BuddyBeacon beacon = beaconOpt.get();
+                if (!userId.equals(beacon.getAuthorId()))
+                    throw new RuntimeException("Not authorized");
+                // Allow delete if EXPIRED (older than 24h)
+                if (beacon.getCreatedAt() != null) {
+                    long hours = java.time.Duration.between(beacon.getCreatedAt(), LocalDateTime.now()).toHours();
+                    if (hours < 24)
+                        throw new RuntimeException("Cannot delete active post");
+                }
+                beaconRepository.deleteById(postId);
+                return;
             }
-            beaconRepository.deleteById(postId);
-            return;
         }
         // Try TeamFindingPost
-        Optional<Post> postOpt = postRepository.findById(postId);
-        if (postOpt.isPresent() && postOpt.get() instanceof TeamFindingPost teamPost) {
-            if (!userId.equals(teamPost.getAuthorId()))
-                throw new RuntimeException("Not authorized");
-            if (teamPost.computePostState() == PostState.ACTIVE)
-                throw new RuntimeException("Cannot delete active post");
-            postRepository.deleteById(postId);
-            return;
+        if (postId != null) {
+            Optional<Post> postOpt = postRepository.findById(postId);
+            if (postOpt.isPresent() && postOpt.get() instanceof TeamFindingPost teamPost) {
+                if (!userId.equals(teamPost.getAuthorId()))
+                    throw new RuntimeException("Not authorized");
+                if (teamPost.computePostState() == PostState.ACTIVE)
+                    throw new RuntimeException("Cannot delete active post");
+                postRepository.deleteById(postId);
+                return;
+            }
         }
         throw new RuntimeException("Post not found");
     }

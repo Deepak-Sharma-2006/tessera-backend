@@ -4,10 +4,9 @@ import com.studencollabfin.server.dto.CommentRequest;
 import com.studencollabfin.server.model.Post;
 import com.studencollabfin.server.model.SocialPost;
 import com.studencollabfin.server.model.TeamFindingPost;
+import com.studencollabfin.server.model.CollabPod;
 import com.studencollabfin.server.repository.PostRepository;
 import lombok.RequiredArgsConstructor;
-import com.studencollabfin.server.model.CollabPod;
-import com.studencollabfin.server.repository.CollabPodRepository;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -15,25 +14,48 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-@SuppressWarnings("null")
 public class PostService {
+    // Toggle like for a SocialPost
+    public SocialPost toggleLike(String postId, String userId) {
+        Post post = getPostById(postId);
+        if (post instanceof SocialPost social) {
+            if (social.getLikes() == null) {
+                social.setLikes(new ArrayList<>());
+            }
+            if (social.getLikes().contains(userId)) {
+                social.getLikes().remove(userId);
+            } else {
+                social.getLikes().add(userId);
+            }
+            return postRepository.save(social);
+        }
+        throw new RuntimeException("Likes only supported for SocialPosts");
+    }
+
     // Poll voting logic
-    public Post voteOnPollOption(String postId, int optionId, String userId) {
+    public Post voteOnPollOption(String postId, String optionId, String userId) {
         Post post = getPostById(postId);
         if (post instanceof com.studencollabfin.server.model.SocialPost) {
             com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
             java.util.List<com.studencollabfin.server.model.PollOption> options = social.getPollOptions();
-            if (options != null && optionId >= 0 && optionId < options.size()) {
-                com.studencollabfin.server.model.PollOption option = options.get(optionId);
-                if (option.getVotes() == null) {
-                    option.setVotes(new java.util.ArrayList<>());
-                }
-                // Prevent duplicate votes
-                boolean alreadyVoted = options.stream()
-                        .anyMatch(opt -> opt.getVotes() != null && opt.getVotes().contains(userId));
-                if (!alreadyVoted) {
-                    option.getVotes().add(userId);
-                    postRepository.save(social);
+            if (options != null && options.size() > 0) {
+                // Find option by UUID
+                com.studencollabfin.server.model.PollOption selectedOption = options.stream()
+                        .filter(opt -> optionId.equals(opt.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+                if (selectedOption != null) {
+                    if (selectedOption.getVotes() == null) {
+                        selectedOption.setVotes(new java.util.ArrayList<>());
+                    }
+                    // Prevent duplicate votes
+                    boolean alreadyVoted = options.stream()
+                            .anyMatch(opt -> opt.getVotes() != null && opt.getVotes().contains(userId));
+                    if (!alreadyVoted) {
+                        selectedOption.getVotes().add(userId);
+                        postRepository.save(social);
+                    }
                 }
             }
         }
@@ -48,7 +70,7 @@ public class PostService {
     }
 
     private final PostRepository postRepository;
-    private final CollabPodRepository collabPodRepository;
+    private final CollabPodService collabPodService;
 
     // This method can save any kind of post (SocialPost, TeamFindingPost, etc.)
     public Post createPost(Post post, String authorId) {
@@ -58,34 +80,31 @@ public class PostService {
         // If this is a SocialPost with LOOKING_FOR type, create the pod first
         if (post instanceof SocialPost) {
             SocialPost social = (SocialPost) post;
+
+            // Initialize empty lists if null
+            if (social.getLikes() == null) {
+                social.setLikes(new java.util.ArrayList<>());
+            }
+            if (social.getComments() == null) {
+                social.setComments(new java.util.ArrayList<>());
+            }
+            if (social.getPollOptions() == null) {
+                social.setPollOptions(new java.util.ArrayList<>());
+            }
+
             if (social.getType() == com.studencollabfin.server.model.PostType.LOOKING_FOR) {
                 try {
                     CollabPod pod = new CollabPod();
-                    pod.setTitle(social.getTitle() != null ? social.getTitle() : "Looking for collaborators");
+                    pod.setName(social.getTitle() != null ? social.getTitle() : "Looking for collaborators");
                     pod.setDescription(social.getContent());
                     pod.setMaxCapacity(6);
                     pod.setTopics(social.getRequiredSkills() != null ? social.getRequiredSkills()
                             : new java.util.ArrayList<>());
-                    pod.setType(CollabPod.PodType.LOOKING_FOR);
+                    pod.setType(CollabPod.PodType.PROJECT_TEAM);
                     pod.setStatus(CollabPod.PodStatus.ACTIVE);
-                    pod.setCreatorId(authorId);
-                    pod.setCreatedAt(LocalDateTime.now());
-                    pod.setLastActive(LocalDateTime.now());
-                    if (pod.getMemberIds() == null)
-                        pod.setMemberIds(new java.util.ArrayList<>());
-                    pod.getMemberIds().add(authorId);
-                    if (pod.getModeratorIds() == null)
-                        pod.setModeratorIds(new java.util.ArrayList<>());
-                    pod.getModeratorIds().add(authorId);
 
-                    CollabPod savedPod = collabPodRepository.save(pod); // save immediately to get ID
-                    social.setLinkedPodId(savedPod.getId());
-
-                    // Award XP for creating a collab pod
-                    try {
-                        userService.awardCollabPodCreationXP(authorId);
-                    } catch (Exception ex) {
-                        /* ignore */ }
+                    CollabPod createdPod = collabPodService.createPod(authorId, pod);
+                    social.setLinkedPodId(createdPod.getId());
                 } catch (Exception ex) {
                     System.err.println("Failed to create CollabPod during post creation: " + ex.getMessage());
                 }
@@ -105,8 +124,11 @@ public class PostService {
     }
 
     public Post getPostById(String id) {
-        return postRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Post not found with id: " + id));
+        if (id != null) {
+            return postRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Post not found with id: " + id));
+        }
+        throw new RuntimeException("Post not found with id: null");
     }
 
     // Add a comment to a SocialPost. If parentId is provided, append as a reply
@@ -152,16 +174,5 @@ public class PostService {
             }
         }
         return false;
-    }
-
-    // ✅ CASCADE DELETE: Delete all posts linked to a Pod
-    public void deletePostsByPodId(String podId) {
-        try {
-            Long deletedCount = postRepository.deleteByLinkedPodId(podId);
-            System.out.println("✅ Cascade Delete: " + (deletedCount != null ? deletedCount : 0)
-                    + " posts with linkedPodId=" + podId + " deleted");
-        } catch (Exception e) {
-            System.err.println("⚠️ Failed to delete posts for podId " + podId + ": " + e.getMessage());
-        }
     }
 }

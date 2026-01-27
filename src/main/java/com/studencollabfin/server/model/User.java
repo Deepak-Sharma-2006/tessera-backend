@@ -2,18 +2,21 @@ package com.studencollabfin.server.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import java.util.List;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 @Document(collection = "users")
 public class User {
     @Id
     private String id;
     private String oauthId; // To store the unique ID from LinkedIn
     private String email;
-    private String username; // Unique username for the user
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
     private String fullName;

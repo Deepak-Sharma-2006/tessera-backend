@@ -1,21 +1,15 @@
 package com.studencollabfin.server.controller;
 
-import java.io.IOException;
-
-import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.CrossOrigin;
 
-import com.studencollabfin.server.service.UserService;
-
-import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 
 @RestController
-@SuppressWarnings("null")
+@CrossOrigin(origins = "http://localhost:5173", allowCredentials = "true")
 public class SecurityController {
-
-    @Autowired
-    private UserService userService;
 
     @GetMapping("/login/success")
     public void loginSuccess(HttpServletResponse response) throws IOException {

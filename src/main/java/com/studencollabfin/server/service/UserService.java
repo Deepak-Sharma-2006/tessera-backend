@@ -16,10 +16,10 @@ import java.util.List;
 import java.time.LocalDateTime;
 
 @Service
-@SuppressWarnings("null")
 public class UserService implements UserDetailsService {
+    @SuppressWarnings("null")
     public User getUserById(String userId) {
-        return userRepository.findById(userId)
+        return userRepository.findById((String) userId)
                 .orElseThrow(() -> new RuntimeException("User not found with ID: " + userId));
     }
 
@@ -59,39 +59,10 @@ public class UserService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
     }
 
-    public boolean emailExists(String email) {
-        return userRepository.existsByEmail(email);
-    }
-
+    @SuppressWarnings("null")
     public User findById(String userId) {
-        return userRepository.findById(userId)
+        return userRepository.findById((String) userId)
                 .orElseThrow(() -> new RuntimeException("User not found with ID: " + userId));
-    }
-
-    public User register(String email, String password) {
-        // Double-check that email doesn't already exist
-        if (userRepository.existsByEmail(email)) {
-            throw new RuntimeException("Email already exists");
-        }
-
-        // Create new user
-        User newUser = new User();
-        newUser.setEmail(email);
-        newUser.setPassword(passwordEncoder.encode(password));
-        newUser.setLevel(1);
-        newUser.setXp(0);
-        newUser.setTotalXP(100);
-        newUser.setProfileCompleted(false);
-
-        return userRepository.save(newUser);
-    }
-
-    public boolean usernameExists(String username) {
-        return userRepository.existsByUsername(username);
-    }
-
-    public User updateUser(User user) {
-        return userRepository.save(user);
     }
 
     // XP constants
@@ -102,8 +73,9 @@ public class UserService implements UserDetailsService {
     private static final int XP_PER_PROJECT_COMPLETED = 50;
     private static final int XP_PER_COLLAB_POD_CREATED = 25;
 
+    @SuppressWarnings("null")
     public void awardXP(String userId, int xpAmount) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findById((String) userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         int newXP = user.getXp() + xpAmount;
@@ -125,8 +97,9 @@ public class UserService implements UserDetailsService {
         checkAndAwardAchievements(user);
     }
 
+    @SuppressWarnings("null")
     public User updateUserProfile(String userId, User profileData) {
-        User existingUser = userRepository.findById(userId)
+        User existingUser = userRepository.findById((String) userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         // Update only the allowed fields
@@ -229,6 +202,28 @@ public class UserService implements UserDetailsService {
                         return userRepository.save(newUser);
                     }
                 });
+    }
+
+    public boolean emailExists(String email) {
+        return userRepository.findByEmail(email).isPresent();
+    }
+
+    public User register(String email, String password) {
+        // Check if email already exists
+        if (emailExists(email)) {
+            throw new RuntimeException("Email already registered");
+        }
+
+        // Create new user
+        User newUser = new User();
+        newUser.setEmail(email);
+        newUser.setPassword(passwordEncoder.encode(password));
+        newUser.setLevel(1);
+        newUser.setXp(0);
+        newUser.setTotalXP(100);
+        newUser.setProfileCompleted(false);
+
+        return userRepository.save(newUser);
     }
 
 }

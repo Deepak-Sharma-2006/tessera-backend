@@ -1,168 +1,158 @@
 package com.studencollabfin.server.controller;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
 import com.studencollabfin.server.model.CollabPod;
-import com.studencollabfin.server.model.PodMessage;
-import com.studencollabfin.server.model.User;
+import com.studencollabfin.server.model.Message;
 import com.studencollabfin.server.repository.CollabPodRepository;
 import com.studencollabfin.server.service.CollabPodService;
-import com.studencollabfin.server.service.PodMessageService;
-import com.studencollabfin.server.service.PostService;
-import com.studencollabfin.server.service.UserService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.http.HttpStatus;
+
+import java.util.List;
 
 @RestController
-@RequestMapping("/api/pods")
-@SuppressWarnings("null")
+@RequestMapping("/pods")
+@CrossOrigin(origins = "http://localhost:5173", allowCredentials = "true")
 public class CollabPodController {
 
     private final CollabPodRepository collabPodRepository;
     private final CollabPodService collabPodService;
-    private final PodMessageService podMessageService;
-    private final PostService postService;
-    private final UserService userService;
 
-    public CollabPodController(CollabPodRepository collabPodRepository, CollabPodService collabPodService,
-            PodMessageService podMessageService, PostService postService, UserService userService) {
+    public CollabPodController(CollabPodRepository collabPodRepository, CollabPodService collabPodService) {
         this.collabPodRepository = collabPodRepository;
         this.collabPodService = collabPodService;
-        this.podMessageService = podMessageService;
-        this.postService = postService;
-        this.userService = userService;
     }
 
-    // ... (Keep your GET endpoints exactly as they were) ...
-    @GetMapping("/looking-for")
-    public ResponseEntity<List<CollabPod>> getPublicPods() {
-        return ResponseEntity.ok(collabPodService.getPublicPods());
-    }
-
-    @GetMapping("/my-teams")
-    public ResponseEntity<List<CollabPod>> getUserPods(
-            @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        if (userId == null || userId.isEmpty())
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        return ResponseEntity.ok(collabPodService.getUserPods(userId));
+    /**
+     * Endpoint for applying to a pod (team) via BuddyBeacon.
+     * Matches frontend POST /beacon/apply/{id}.
+     * Request body: { "userId": "..." }
+     */
+    @PostMapping("/beacon/apply/{id}")
+    public ResponseEntity<?> applyToPod(@PathVariable String id, @RequestBody java.util.Map<String, String> payload) {
+        String userId = payload.get("userId");
+        if (userId == null || userId.isEmpty()) {
+            return ResponseEntity.badRequest().body("Missing userId");
+        }
+        java.util.Optional<CollabPod> podOpt = collabPodRepository.findById(id);
+        if (podOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Pod not found");
+        }
+        CollabPod pod = podOpt.get();
+        // Add userId to applicants list (create if missing)
+        if (pod.getApplicants() == null) {
+            pod.setApplicants(new java.util.ArrayList<>());
+        }
+        if (!pod.getApplicants().contains(userId)) {
+            pod.getApplicants().add(userId);
+            collabPodRepository.save(pod);
+        }
+        return ResponseEntity.ok(pod);
     }
 
     @GetMapping
     public ResponseEntity<List<CollabPod>> getAllPods() {
-        return ResponseEntity.ok(collabPodRepository.findAll());
+        try {
+            List<CollabPod> pods = collabPodRepository.findAll();
+            if (pods == null) {
+                return ResponseEntity.ok(new java.util.ArrayList<>());
+            }
+            return ResponseEntity.ok(pods);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/looking-for")
+    public ResponseEntity<List<CollabPod>> getLookingForPods() {
+        try {
+            List<CollabPod> pods = collabPodRepository.findAll();
+
+            // Handle null or empty database
+            if (pods == null) {
+                return ResponseEntity.ok(new java.util.ArrayList<>());
+            }
+
+            // Filter for pods with status LOOKING_FOR_MEMBERS or ACTIVE
+            java.util.List<CollabPod> filtered = pods.stream()
+                    .filter(pod -> pod.getStatus() != null &&
+                            (pod.getStatus().toString().equals("LOOKING_FOR_MEMBERS") ||
+                                    pod.getStatus().toString().equals("ACTIVE")))
+                    .toList();
+            return ResponseEntity.ok(filtered);
+        } catch (Exception e) {
+            e.printStackTrace(); // This prints the error to the terminal
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/my-teams")
+    public ResponseEntity<List<CollabPod>> getMyTeams() {
+        try {
+            // This endpoint would typically filter by current user
+            // For now, returning all pods as a placeholder
+            List<CollabPod> pods = collabPodRepository.findAll();
+            if (pods == null) {
+                return ResponseEntity.ok(new java.util.ArrayList<>());
+            }
+            return ResponseEntity.ok(pods);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<CollabPod> getPodById(@PathVariable String id) {
-        return collabPodRepository.findById(id)
+        @SuppressWarnings("null")
+        ResponseEntity<CollabPod> response = collabPodRepository.findById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).build());
+        return response;
     }
 
     @GetMapping("/{id}/messages")
-    public ResponseEntity<List<PodMessage>> getPodMessages(@PathVariable String id) {
-        return ResponseEntity.ok(podMessageService.getMessagesByPodId(id));
-    }
-
-    // ✅ FIXED: Create Pod (Explicitly sets Creator Name & ID)
-    @PostMapping
-    public ResponseEntity<?> createPod(@RequestBody CollabPod newPod,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        if (userDetails == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Authentication required");
-        }
+    public ResponseEntity<List<Message>> getPodMessages(@PathVariable String id) {
         try {
-            User creator = userService.findByEmail(userDetails.getUsername());
-            if (creator == null)
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
-
-            // 1. Force ID and Name from the Authenticated User
-            newPod.setCreatorId(creator.getId());
-            newPod.setCreatorName(creator.getFullName()); // ✅ Solves "Placeholder" issue
-            newPod.setCreatedAt(LocalDateTime.now());
-
-            // 2. Initialize lists if null
-            if (newPod.getMemberIds() == null)
-                newPod.setMemberIds(new ArrayList<>());
-            if (!newPod.getMemberIds().contains(creator.getId())) {
-                newPod.getMemberIds().add(creator.getId());
-            }
-
-            // 3. Save directly via Repository (bypassing Service to ensure fields are
-            // saved)
-            CollabPod savedPod = collabPodRepository.save(newPod);
-
-            System.out.println("✅ Pod Created: " + savedPod.getTitle() + " by " + creator.getFullName() + " ("
-                    + creator.getId() + ")");
-            return new ResponseEntity<>(savedPod, HttpStatus.CREATED);
-
+            List<Message> messages = collabPodService.getMessagesForPod(id);
+            return ResponseEntity.ok(messages);
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    // ✅ FIXED: Delete Pod (Cascade Delete + Explicit Ownership Check)
-    @DeleteMapping("/{podId}")
-    public ResponseEntity<?> deletePod(@PathVariable String podId,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        if (userDetails == null)
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Auth required");
-
+    @PostMapping("/{id}/messages")
+    public ResponseEntity<Message> sendMessage(@PathVariable String id, @RequestBody Message message) {
         try {
-            User currentUser = userService.findByEmail(userDetails.getUsername());
+            // Set the conversationId (podId) so the message knows which chat it belongs to
+            message.setConversationId(id);
+            message.setPodId(id);
 
-            // 1. Find the Pod
-            CollabPod pod = collabPodRepository.findById(podId).orElse(null);
-            if (pod == null)
-                return ResponseEntity.notFound().build();
-
-            // 2. LOGGING FOR DEBUGGING
-            System.out.println("🗑️ DELETE REQUEST: Pod " + podId);
-            System.out.println("   - Requester: " + currentUser.getId());
-            System.out.println("   - Owner: " + pod.getCreatorId());
-
-            // 3. Explicit Ownership Check
-            if (!pod.getCreatorId().equals(currentUser.getId())) {
-                System.out.println("❌ DELETE BLOCKED: ID Mismatch");
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("You are not the owner of this pod");
-            }
-
-            // 4. CASCADE DELETE: Delete messages first
-            try {
-                podMessageService.deleteMessagesByPodId(podId);
-            } catch (Exception e) {
-                System.out.println("⚠️ Message cleanup warning: " + e.getMessage());
-            }
-
-            // 5. CASCADE DELETE: Delete associated posts
-            try {
-                postService.deletePostsByPodId(podId);
-            } catch (Exception e) {
-                System.out.println("⚠️ Post cleanup warning: " + e.getMessage());
-            }
-
-            // 6. Delete the Pod
-            collabPodRepository.deleteById(podId);
-            System.out.println("✅ DELETE SUCCESS");
-
-            return ResponseEntity.ok().build();
-
+            // Save to MongoDB using the service
+            Message savedMessage = collabPodService.saveMessage(message);
+            return ResponseEntity.ok(savedMessage);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
+
+    /**
+     * This is the endpoint for creating a new collaboration pod.
+     * It receives pod data from the React form and saves it to the database.
+     */
+    @PostMapping
+    public ResponseEntity<CollabPod> createPod(@RequestBody CollabPod newPod) {
+        @SuppressWarnings("null")
+        CollabPod savedPod = collabPodRepository.save(newPod);
+        return new ResponseEntity<>(savedPod, HttpStatus.CREATED);
     }
 }

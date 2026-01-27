@@ -9,7 +9,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
-@SuppressWarnings("null")
 public class ProjectService {
 
     @Autowired
@@ -22,8 +21,10 @@ public class ProjectService {
     private UserService userService;
 
     public Project createProject(String leaderId, Project project) {
-        userRepository.findById(leaderId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        if (leaderId != null) {
+            userRepository.findById((String) leaderId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+        }
 
         project.setLeaderId(leaderId);
         project.setStatus(Project.ProjectStatus.PLANNING);
@@ -38,53 +39,62 @@ public class ProjectService {
     }
 
     public Project joinProject(String projectId, String userId) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new RuntimeException("Project not found"));
+        if (projectId != null) {
+            Project project = projectRepository.findById((String) projectId)
+                    .orElseThrow(() -> new RuntimeException("Project not found"));
 
-        if (project.getMemberIds().size() >= project.getMaxTeamSize()) {
-            throw new RuntimeException("Project team is full");
+            if (project.getMemberIds().size() >= project.getMaxTeamSize()) {
+                throw new RuntimeException("Project team is full");
+            }
+
+            if (!project.getMemberIds().contains(userId)) {
+                project.getMemberIds().add(userId);
+            }
+
+            return projectRepository.save(project);
         }
-
-        if (!project.getMemberIds().contains(userId)) {
-            project.getMemberIds().add(userId);
-        }
-
-        return projectRepository.save(project);
+        throw new RuntimeException("Project not found");
     }
 
     public Project addMilestone(String projectId, String leaderId, Project.Milestone milestone) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new RuntimeException("Project not found"));
+        if (projectId != null) {
+            Project project = projectRepository.findById((String) projectId)
+                    .orElseThrow(() -> new RuntimeException("Project not found"));
 
-        if (!project.getLeaderId().equals(leaderId)) {
-            throw new RuntimeException("Only project leader can add milestones");
+            if (!project.getLeaderId().equals(leaderId)) {
+                throw new RuntimeException("Only project leader can add milestones");
+            }
+
+            if (project.getMilestones() == null) {
+                project.setMilestones(new java.util.ArrayList<>());
+            }
+            project.getMilestones().add(milestone);
+
+            return projectRepository.save(project);
         }
-
-        if (project.getMilestones() == null) {
-            project.setMilestones(new java.util.ArrayList<>());
-        }
-        project.getMilestones().add(milestone);
-
-        return projectRepository.save(project);
+        throw new RuntimeException("Project not found");
     }
 
     public Project completeProject(String projectId, String leaderId) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new RuntimeException("Project not found"));
+        if (projectId != null) {
+            Project project = projectRepository.findById((String) projectId)
+                    .orElseThrow(() -> new RuntimeException("Project not found"));
 
-        if (!project.getLeaderId().equals(leaderId)) {
-            throw new RuntimeException("Only project leader can complete the project");
+            if (!project.getLeaderId().equals(leaderId)) {
+                throw new RuntimeException("Only project leader can complete the project");
+            }
+
+            project.setStatus(Project.ProjectStatus.COMPLETED);
+            project.setEndDate(LocalDateTime.now());
+
+            // Award XP to all team members
+            for (String memberId : project.getMemberIds()) {
+                userService.awardProjectCompletionXP(memberId);
+            }
+
+            return projectRepository.save(project);
         }
-
-        project.setStatus(Project.ProjectStatus.COMPLETED);
-        project.setEndDate(LocalDateTime.now());
-
-        // Award XP to all team members
-        for (String memberId : project.getMemberIds()) {
-            userService.awardProjectCompletionXP(memberId);
-        }
-
-        return projectRepository.save(project);
+        throw new RuntimeException("Project not found");
     }
 
     public List<Project> getProjectsByUser(String userId) {

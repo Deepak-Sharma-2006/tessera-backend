@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Optional;
 
 @Service
-@SuppressWarnings("null")
 public class CommentService {
     @Autowired
     private CommentRepository commentRepository;
@@ -28,7 +27,8 @@ public class CommentService {
         return commentRepository.save(comment);
     }
 
+    @SuppressWarnings("null")
     public Optional<Comment> getCommentById(String id) {
-        return commentRepository.findById(id);
+        return commentRepository.findById((String) id);
     }
 }

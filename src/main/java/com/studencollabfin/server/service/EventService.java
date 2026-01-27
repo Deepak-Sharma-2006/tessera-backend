@@ -10,7 +10,6 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-@SuppressWarnings("null")
 public class EventService {
 
     private final EventRepository eventRepository;
@@ -24,9 +23,10 @@ public class EventService {
         return eventRepository.findByCategory(category);
     }
 
+    @SuppressWarnings("null")
     public Event getEventById(String id) {
         // Find the event by ID, or throw an exception if not found
-        return eventRepository.findById(id)
+        return eventRepository.findById((String) id)
                 .orElseThrow(() -> new RuntimeException("Event not found with id: " + id));
     }
 
@@ -46,11 +46,12 @@ public class EventService {
         return eventRepository.save(newEvent);
     }
 
+    @SuppressWarnings("null")
     public void deleteEvent(String id) {
         // First check if the event exists to provide a better error message
-        if (!eventRepository.existsById(id)) {
+        if (!eventRepository.existsById((String) id)) {
             throw new RuntimeException("Event not found with id: " + id);
         }
-        eventRepository.deleteById(id);
+        eventRepository.deleteById((String) id);
     }
 }

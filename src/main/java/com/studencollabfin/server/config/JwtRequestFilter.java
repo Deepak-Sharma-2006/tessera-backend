@@ -12,13 +12,13 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
-// NOTE: This component is now ENABLED to enforce JWT authentication for protected endpoints.
-@Component
+// NOTE: This component remains disabled to prevent conflicts with OAuth2 security.
+// To use JWT security instead of OAuth2, you would uncomment the line below.
+// @Component
 public class JwtRequestFilter extends OncePerRequestFilter {
 
     // Added the logger declaration to fix the error
