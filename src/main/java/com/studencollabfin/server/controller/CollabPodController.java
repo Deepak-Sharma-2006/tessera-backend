@@ -3,7 +3,10 @@ package com.studencollabfin.server.controller;
 import com.studencollabfin.server.model.CollabPod;
 import com.studencollabfin.server.model.Message;
 import com.studencollabfin.server.repository.CollabPodRepository;
+import com.studencollabfin.server.repository.UserRepository;
 import com.studencollabfin.server.service.CollabPodService;
+import com.studencollabfin.server.service.AchievementService;
+import com.studencollabfin.server.model.User;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,8 +16,10 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
+import java.util.ArrayList;
 
 @RestController
 @RequestMapping("/pods")
@@ -23,6 +28,12 @@ public class CollabPodController {
 
     private final CollabPodRepository collabPodRepository;
     private final CollabPodService collabPodService;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private AchievementService achievementService;
 
     public CollabPodController(CollabPodRepository collabPodRepository, CollabPodService collabPodService) {
         this.collabPodRepository = collabPodRepository;
@@ -52,18 +63,87 @@ public class CollabPodController {
         if (!pod.getApplicants().contains(userId)) {
             pod.getApplicants().add(userId);
             collabPodRepository.save(pod);
+
+            // Trigger Pod Pioneer badge unlock
+            achievementService.onJoinPod(userId);
         }
         return ResponseEntity.ok(pod);
+    }
+
+    /**
+     * Join a pod and trigger badge unlock logic
+     * Request body: { "userId": "..." }
+     */
+    @PostMapping("/{id}/join")
+    public ResponseEntity<?> joinPod(@PathVariable String id, @RequestBody java.util.Map<String, String> payload) {
+        String userId = payload.get("userId");
+        if (userId == null || userId.isEmpty()) {
+            return ResponseEntity.badRequest().body("Missing userId");
+        }
+
+        java.util.Optional<CollabPod> podOpt = collabPodRepository.findById(id);
+        if (podOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Pod not found");
+        }
+
+        CollabPod pod = podOpt.get();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // Add user to members list
+        if (pod.getMemberIds() == null) {
+            pod.setMemberIds(new ArrayList<>());
+        }
+        if (!pod.getMemberIds().contains(userId)) {
+            pod.getMemberIds().add(userId);
+        }
+
+        // Check for Bridge Builder badge (inter-college collaboration)
+        boolean isInterCollegePod = hasMultipleCollegges(pod);
+        if (isInterCollegePod && !user.getBadges().contains("Bridge Builder")) {
+            if (user.getBadges() == null) {
+                user.setBadges(new ArrayList<>());
+            }
+            user.getBadges().add("Bridge Builder");
+            achievementService.unlockAchievement(userId, "Bridge Builder");
+        }
+
+        // Unlock Pod Pioneer badge
+        achievementService.onJoinPod(userId);
+
+        collabPodRepository.save(pod);
+        userRepository.save(user);
+
+        return ResponseEntity.ok(user);
+    }
+
+    /**
+     * Check if a pod has members from multiple colleges (for Bridge Builder badge)
+     */
+    private boolean hasMultipleCollegges(CollabPod pod) {
+        if (pod.getMemberIds() == null || pod.getMemberIds().isEmpty()) {
+            return false;
+        }
+
+        java.util.Set<String> colleges = new java.util.HashSet<>();
+        for (String memberId : pod.getMemberIds()) {
+            java.util.Optional<User> memberOpt = userRepository.findById(memberId);
+            if (memberOpt.isPresent()) {
+                String collegeName = memberOpt.get().getCollegeName();
+                if (collegeName != null) {
+                    colleges.add(collegeName);
+                }
+            }
+        }
+
+        return colleges.size() > 1;
     }
 
     @GetMapping
     public ResponseEntity<List<CollabPod>> getAllPods() {
         try {
             List<CollabPod> pods = collabPodRepository.findAll();
-            if (pods == null) {
-                return ResponseEntity.ok(new java.util.ArrayList<>());
-            }
-            return ResponseEntity.ok(pods);
+            return ResponseEntity.ok(pods != null ? pods : new java.util.ArrayList<>());
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -74,9 +154,7 @@ public class CollabPodController {
     public ResponseEntity<List<CollabPod>> getLookingForPods() {
         try {
             List<CollabPod> pods = collabPodRepository.findAll();
-
-            // Handle null or empty database
-            if (pods == null) {
+            if (pods == null || pods.isEmpty()) {
                 return ResponseEntity.ok(new java.util.ArrayList<>());
             }
 
@@ -99,10 +177,7 @@ public class CollabPodController {
             // This endpoint would typically filter by current user
             // For now, returning all pods as a placeholder
             List<CollabPod> pods = collabPodRepository.findAll();
-            if (pods == null) {
-                return ResponseEntity.ok(new java.util.ArrayList<>());
-            }
-            return ResponseEntity.ok(pods);
+            return ResponseEntity.ok(pods != null ? pods : new java.util.ArrayList<>());
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();

@@ -4,8 +4,7 @@ import lombok.Data;
 import java.util.List;
 
 @Data
-public class UpdateProfileRequest {
-    private String username;
+public class ProfileUpdateRequest {
     private String fullName;
     private String collegeName;
     private String yearOfStudy;

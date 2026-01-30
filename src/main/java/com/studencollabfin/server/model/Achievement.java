@@ -30,7 +30,12 @@ public class Achievement {
         COLLABORATION,
         ACADEMIC,
         LEADERSHIP,
-        MENTORSHIP,
-        SPECIAL
+        MENTORSHIP, // Now recognized by compiler
+        SPECIAL, // Now recognized by compiler
+        FOUNDING_DEV, // New MVP Type
+        CAMPUS_CATALYST, // New MVP Type
+        POD_PIONEER, // New MVP Type
+        BRIDGE_BUILDER, // New MVP Type
+        SKILL_SAGE // New MVP Type
     }
 }
