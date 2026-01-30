@@ -165,6 +165,12 @@ public class CollabPodService {
                         java.util.UUID.randomUUID().getLeastSignificantBits()).toString());
             }
 
+            // CRITICAL FIX: Ensure senderId is always set
+            // This is used by frontend to determine message alignment (left vs right)
+            if (message.getSenderId() == null || message.getSenderId().isEmpty()) {
+                throw new IllegalArgumentException("senderId is required for messages");
+            }
+
             // Ensure conversationId is set from podId if not already set
             if (message.getConversationId() == null && message.getPodId() != null) {
                 message.setConversationId(message.getPodId());
@@ -205,6 +211,7 @@ public class CollabPodService {
             Message savedMessage = messageRepository.save(message);
             System.out.println("✓ Message saved to messages collection: " + savedMessage.getId() + " for pod: "
                     + savedMessage.getPodId());
+            System.out.println("  - Sender ID: " + savedMessage.getSenderId());
             System.out.println("  - Attachment URL saved: "
                     + (savedMessage.getAttachmentUrl() != null ? savedMessage.getAttachmentUrl() : "NONE"));
             System.out.println("  - Attachment Type saved: " + savedMessage.getAttachmentType());
