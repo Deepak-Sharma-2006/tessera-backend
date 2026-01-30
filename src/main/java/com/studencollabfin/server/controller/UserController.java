@@ -3,9 +3,13 @@ package com.studencollabfin.server.controller;
 import com.studencollabfin.server.model.User;
 import com.studencollabfin.server.model.Achievement;
 import com.studencollabfin.server.service.UserService;
+import com.studencollabfin.server.service.AchievementService;
+import com.studencollabfin.server.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.List;
 
@@ -17,10 +21,35 @@ public class UserController {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private AchievementService achievementService;
+
+    @Autowired
+    private UserRepository userRepository;
+
     @GetMapping("/{userId}")
     public ResponseEntity<?> getProfile(@PathVariable String userId) {
         try {
             User user = userService.findById(userId);
+            
+            // Auto-add Founding Dev badge if isDev is true
+            if (user.isDev() && (user.getBadges() == null || !user.getBadges().contains("Founding Dev"))) {
+                if (user.getBadges() == null) {
+                    user.setBadges(new ArrayList<>());
+                }
+                user.getBadges().add("Founding Dev");
+                userRepository.save(user);
+            }
+            
+            // Auto-add Campus Catalyst badge if role is COLLEGE_HEAD
+            if ("COLLEGE_HEAD".equals(user.getRole()) && (user.getBadges() == null || !user.getBadges().contains("Campus Catalyst"))) {
+                if (user.getBadges() == null) {
+                    user.setBadges(new ArrayList<>());
+                }
+                user.getBadges().add("Campus Catalyst");
+                userRepository.save(user);
+            }
+            
             return ResponseEntity.ok(user);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
@@ -31,6 +60,25 @@ public class UserController {
     public ResponseEntity<?> updateUserProfile(@PathVariable String userId, @RequestBody User profileData) {
         try {
             User updatedUser = userService.updateUserProfile(userId, profileData);
+            
+            // Auto-add Founding Dev badge if isDev is true
+            if (updatedUser.isDev() && (updatedUser.getBadges() == null || !updatedUser.getBadges().contains("Founding Dev"))) {
+                if (updatedUser.getBadges() == null) {
+                    updatedUser.setBadges(new ArrayList<>());
+                }
+                updatedUser.getBadges().add("Founding Dev");
+                updatedUser = userRepository.save(updatedUser);
+            }
+            
+            // Auto-add Campus Catalyst badge if role is COLLEGE_HEAD
+            if ("COLLEGE_HEAD".equals(updatedUser.getRole()) && (updatedUser.getBadges() == null || !updatedUser.getBadges().contains("Campus Catalyst"))) {
+                if (updatedUser.getBadges() == null) {
+                    updatedUser.setBadges(new ArrayList<>());
+                }
+                updatedUser.getBadges().add("Campus Catalyst");
+                updatedUser = userRepository.save(updatedUser);
+            }
+            
             return ResponseEntity.ok(updatedUser);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
@@ -58,5 +106,265 @@ public class UserController {
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    @PostMapping("/{userId}/grant-catalyst")
+    public ResponseEntity<?> grantCatalyst(@PathVariable String userId,
+            @RequestHeader(value = "X-User-Id", required = false) String currentUserId) {
+        try {
+            // Get current user (must be developer)
+            User currentUser = null;
+            if (currentUserId != null && !currentUserId.isEmpty()) {
+                currentUser = userRepository.findById(currentUserId).orElse(null);
+            }
+
+            // Only a Developer can promote others
+            if (currentUser == null || !currentUser.isDev()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body("Access Denied: Only developers can grant badges");
+            }
+
+            // Get target user and promote to COLLEGE_HEAD
+            User targetUser = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
+            targetUser.setRole("COLLEGE_HEAD");
+
+            // Add badge to user's list for frontend visibility
+            if (targetUser.getBadges() == null) {
+                targetUser.setBadges(new ArrayList<>());
+            }
+            if (!targetUser.getBadges().contains("Campus Catalyst")) {
+                targetUser.getBadges().add("Campus Catalyst");
+            }
+
+            userRepository.save(targetUser);
+            achievementService.unlockAchievement(userId, "Campus Catalyst");
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "User promoted to Campus Catalyst",
+                    "user", targetUser));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/activate-dev")
+    public ResponseEntity<?> activateDev(@RequestHeader(value = "Authorization") String authHeader) {
+        try {
+            // Extract user ID from token or get from context
+            // For now, we'll use a simpler approach: get from authenticated request
+            // In a real app, you'd extract the user ID from the JWT token
+
+            // This endpoint allows users to activate developer mode via the secret 5-click
+            // pattern
+            // We need to get the current user - typically from JWT token in Authorization
+            // header
+            // For this implementation, we'll return a message that this needs proper
+            // authentication
+
+            // Note: In production, you should extract the user ID from the JWT token
+            // For now, we'll provide a placeholder that requires the frontend to pass user
+            // context
+
+            return ResponseEntity.badRequest().body("Use X-User-Id header with your user ID");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/{userId}/activate-dev")
+    public ResponseEntity<?> activateDevForUser(@PathVariable String userId) {
+        try {
+            // Get user and set isDev to true
+            User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
+            user.setDev(true);
+
+            // Add Founding Dev badge if not already present
+            if (user.getBadges() == null) {
+                user.setBadges(new ArrayList<>());
+            }
+            if (!user.getBadges().contains("Founding Dev")) {
+                user.getBadges().add("Founding Dev");
+            }
+
+            userRepository.save(user);
+            achievementService.unlockAchievement(userId, "Founding Dev");
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Developer mode activated",
+                    "user", user));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error: " + e.getMessage());
+        }
+    }
+
+    // ============ NEW PROFILE & ENDORSEMENT ENDPOINTS ============
+
+    // Update Profile - Dynamic Synergy Profile Updates
+    @PutMapping("/{userId}/profile")
+    public ResponseEntity<User> updateProfile(@PathVariable String userId, @RequestBody User updates) {
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            // Update all profile fields dynamically from the request
+            if (updates.getFullName() != null)
+                user.setFullName(updates.getFullName());
+            if (updates.getCollegeName() != null)
+                user.setCollegeName(updates.getCollegeName());
+            if (updates.getDepartment() != null)
+                user.setDepartment(updates.getDepartment());
+            if (updates.getYearOfStudy() != null)
+                user.setYearOfStudy(updates.getYearOfStudy());
+            if (updates.getGoals() != null)
+                user.setGoals(updates.getGoals());
+            if (updates.getSkills() != null)
+                user.setSkills(updates.getSkills());
+            if (updates.getExcitingTags() != null)
+                user.setExcitingTags(updates.getExcitingTags());
+            if (updates.getRolesOpenTo() != null)
+                user.setRolesOpenTo(updates.getRolesOpenTo());
+
+            User updatedUser = userRepository.save(user);
+
+            // Check if profile is now complete for Profile Pioneer achievement
+            if (isProfileComplete(user)) {
+                achievementService.unlockAchievement(userId, "Profile Pioneer");
+            }
+
+            return ResponseEntity.ok(updatedUser);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    // Endorse User - Skill Endorsement System
+    @PostMapping("/{userId}/endorse")
+    public ResponseEntity<User> endorseUser(@PathVariable String userId) {
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            // Increment endorsement count
+            user.setEndorsementsCount(user.getEndorsementsCount() + 1);
+
+            // Reaching 3 endorsements unlocks the Skill Sage badge
+            if (user.getEndorsementsCount() >= 3 && !user.getBadges().contains("Skill Sage")) {
+                if (user.getBadges() == null) {
+                    user.setBadges(new ArrayList<>());
+                }
+                user.getBadges().add("Skill Sage");
+                achievementService.unlockAchievement(userId, "Skill Sage");
+            }
+
+            User updatedUser = userRepository.save(user);
+            return ResponseEntity.ok(updatedUser);
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    // ============ BADGE SYNCHRONIZATION ============
+    
+    /**
+     * Syncs badges based on user flags (isDev, role)
+     * Adds Founding Dev if isDev=true, Campus Catalyst if role=COLLEGE_HEAD
+     * Call this endpoint to ensure badges are properly assigned
+     */
+    @PostMapping("/{userId}/sync-badges")
+    public ResponseEntity<?> syncBadges(@PathVariable String userId) {
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            if (user.getBadges() == null) {
+                user.setBadges(new ArrayList<>());
+            }
+            
+            boolean updated = false;
+            
+            // Add Founding Dev badge if isDev is true
+            if (user.isDev() && !user.getBadges().contains("Founding Dev")) {
+                user.getBadges().add("Founding Dev");
+                updated = true;
+            }
+            
+            // Add Campus Catalyst badge if role is COLLEGE_HEAD
+            if ("COLLEGE_HEAD".equals(user.getRole()) && !user.getBadges().contains("Campus Catalyst")) {
+                user.getBadges().add("Campus Catalyst");
+                updated = true;
+            }
+            
+            // Remove Founding Dev if isDev is now false
+            if (!user.isDev() && user.getBadges().contains("Founding Dev")) {
+                user.getBadges().remove("Founding Dev");
+                updated = true;
+            }
+            
+            // Remove Campus Catalyst if role is no longer COLLEGE_HEAD
+            if (!"COLLEGE_HEAD".equals(user.getRole()) && user.getBadges().contains("Campus Catalyst")) {
+                user.getBadges().remove("Campus Catalyst");
+                updated = true;
+            }
+            
+            if (updated) {
+                user = userRepository.save(user);
+            }
+            
+            return ResponseEntity.ok(user);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error: " + e.getMessage());
+        }
+    }
+
+    // ============ BADGE DISPLAY MANAGEMENT ============
+
+    @PostMapping("/{userId}/displayed-badges")
+    public ResponseEntity<?> updateDisplayedBadges(@PathVariable String userId,
+            @RequestBody Map<String, List<String>> request) {
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            List<String> badgesToDisplay = request.get("badges");
+
+            // Validate: user can only display badges they have earned
+            if (badgesToDisplay != null) {
+                for (String badge : badgesToDisplay) {
+                    if (!user.getBadges().contains(badge)) {
+                        return ResponseEntity.badRequest()
+                                .body("Cannot display badge you haven't earned: " + badge);
+                    }
+                }
+
+                // Limit to 3 badges max (except special badges like Signal Guardian, Mod Badge,
+                // Penalty badges)
+                // For now, allow any 3 earned badges
+                if (badgesToDisplay.size() > 3) {
+                    return ResponseEntity.badRequest()
+                            .body("You can display a maximum of 3 badges");
+                }
+
+                user.setDisplayedBadges(badgesToDisplay);
+            }
+
+            User updatedUser = userRepository.save(user);
+            return ResponseEntity.ok(updatedUser);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error: " + e.getMessage());
+        }
+    }
+
+    // ============ HELPER METHODS ============
+
+    private boolean isProfileComplete(User user) {
+        return user.getFullName() != null && !user.getFullName().isEmpty() &&
+                user.getCollegeName() != null && !user.getCollegeName().isEmpty() &&
+                user.getYearOfStudy() != null && !user.getYearOfStudy().isEmpty() &&
+                user.getDepartment() != null && !user.getDepartment().isEmpty() &&
+                user.getSkills() != null && !user.getSkills().isEmpty() &&
+                user.getRolesOpenTo() != null && !user.getRolesOpenTo().isEmpty() &&
+                user.getGoals() != null && !user.getGoals().isEmpty();
     }
 }
