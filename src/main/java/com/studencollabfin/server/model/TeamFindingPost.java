@@ -4,6 +4,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.springframework.data.mongodb.core.mapping.Document;
 import java.util.List;
+import java.util.Map;
 import java.time.LocalDateTime;
 
 @Data
@@ -11,16 +12,22 @@ import java.time.LocalDateTime;
 @Document(collection = "posts")
 public class TeamFindingPost extends Post {
 
+    private String title; // Title of the team finding post (e.g., "bmw")
     private String eventId; // ID of the event this post is for
+    private String authorName; // ✅ FIX #3: Author's name for display
     private List<String> requiredSkills;
     private int maxTeamSize;
     private List<String> currentTeamMembers;
+    private List<Map<String, Object>> applicants; // ✅ FEATURE: List of applicants with their profiles
 
     // status field for compatibility with services
     private String status;
 
     // Remove string status, use PostState if needed
     private PostState postState;
+
+    // Link to the pod created for this team finding post
+    private String linkedPodId;
 
     // Compatibility getters delegating to superclass where appropriate
     public java.time.LocalDateTime getCreatedAt() {
@@ -65,5 +72,15 @@ public class TeamFindingPost extends Post {
         if (hours < 24)
             return PostState.CLOSED;
         return PostState.EXPIRED;
+    }
+
+    // ✅ FIX #1: Add description getter/setter that maps to content for frontend
+    // compatibility
+    public String getDescription() {
+        return this.getContent();
+    }
+
+    public void setDescription(String description) {
+        this.setContent(description);
     }
 }

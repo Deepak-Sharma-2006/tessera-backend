@@ -15,20 +15,11 @@ public class SocialPost extends Post {
 
     private String title;
     private List<String> likes = new ArrayList<>();
-    private List<Comment> comments = new ArrayList<>();
+    private List<String> commentIds = new ArrayList<>(); // References to comments collection
     private List<PollOption> pollOptions = new ArrayList<>();
     private PostType type = PostType.ASK_HELP;
     private String category = "CAMPUS"; // INTER or CAMPUS to distinguish where polls are shown
     // Optional fields for linking to created pods or listing required skills
     private String linkedPodId;
     private List<String> requiredSkills = new ArrayList<>();
-
-    @Data
-    public static class Comment {
-        private String id = UUID.randomUUID().toString();
-        private String authorName;
-        private String content;
-        private LocalDateTime createdAt = LocalDateTime.now();
-        private List<Comment> replies = new ArrayList<>();
-    }
 }

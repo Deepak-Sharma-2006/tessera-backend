@@ -39,11 +39,17 @@ public class MessagingService {
     public Message sendMessage(String conversationId, String senderId, String text, List<String> attachmentUrls) {
         Message msg = new Message();
         msg.setConversationId(conversationId);
+        msg.setRoomId(conversationId); // For global rooms, roomId = conversationId
         msg.setSenderId(senderId);
         msg.setText(text);
         msg.setAttachmentUrls(attachmentUrls);
         msg.setSentAt(new Date());
         msg.setRead(false);
+
+        // Set messageType and scope for global inter-college/inter-campus conversations
+        msg.setMessageType("GLOBAL_ROOM");
+        msg.setScope("GLOBAL");
+
         if (conversationId != null) {
             Conversation conv = conversationRepository.findById(conversationId).orElseThrow();
             conv.setUpdatedAt(new Date());

@@ -11,11 +11,21 @@ import java.util.List;
 public class Comment {
     @Id
     private String id;
+
+    // Post reference and categorization
     private String postId; // The post this comment belongs to
+    private String postType; // CAMPUS_POST (ask help, offer help) or DISCUSSION
+    private String scope; // CAMPUS or GLOBAL
+
+    // Comment hierarchy
     private String parentId; // null if top-level comment, else parent comment id
+    private List<String> replyIds; // List of child comment ids (for fast lookup)
+
+    // Author information
     private String authorId;
     private String authorName;
+
+    // Content
     private String content;
     private LocalDateTime createdAt;
-    private List<String> replyIds; // List of child comment ids (for fast lookup)
 }

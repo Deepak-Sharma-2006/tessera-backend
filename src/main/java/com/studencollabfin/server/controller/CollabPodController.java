@@ -2,6 +2,7 @@ package com.studencollabfin.server.controller;
 
 import com.studencollabfin.server.model.CollabPod;
 import com.studencollabfin.server.model.Message;
+import com.studencollabfin.server.model.PodScope;
 import com.studencollabfin.server.repository.CollabPodRepository;
 import com.studencollabfin.server.service.CollabPodService;
 import org.springframework.http.ResponseEntity;
@@ -9,9 +10,11 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.http.HttpStatus;
 
 import java.util.List;
@@ -40,6 +43,7 @@ public class CollabPodController {
         if (userId == null || userId.isEmpty()) {
             return ResponseEntity.badRequest().body("Missing userId");
         }
+        @SuppressWarnings("null")
         java.util.Optional<CollabPod> podOpt = collabPodRepository.findById(id);
         if (podOpt.isEmpty()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Pod not found");
@@ -57,13 +61,64 @@ public class CollabPodController {
     }
 
     @GetMapping
-    public ResponseEntity<List<CollabPod>> getAllPods() {
+    public ResponseEntity<List<CollabPod>> getPods(@RequestParam(required = false) String scope) {
         try {
-            List<CollabPod> pods = collabPodRepository.findAll();
-            if (pods == null) {
-                return ResponseEntity.ok(new java.util.ArrayList<>());
+            List<CollabPod> pods;
+
+            if (scope != null && !scope.isEmpty()) {
+                try {
+                    PodScope podScope = PodScope.valueOf(scope.toUpperCase());
+                    pods = collabPodRepository.findByScope(podScope);
+                } catch (IllegalArgumentException e) {
+                    return ResponseEntity.badRequest().body(null);
+                }
+            } else {
+                pods = collabPodRepository.findAll();
             }
-            return ResponseEntity.ok(pods);
+
+            return ResponseEntity.ok(pods != null ? pods : new java.util.ArrayList<>());
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Strict endpoint for CAMPUS scope only, filtered by LOOKING_FOR type.
+     * Returns only pods with scope=CAMPUS and type=LOOKING_FOR.
+     * Used by CollabPodsPage "Looking For" tab to show only "Looking For" posts,
+     * excluding "Team Finding" pods created from Buddy Beacon.
+     */
+    @GetMapping("/campus")
+    public ResponseEntity<List<CollabPod>> getCampusPods() {
+        try {
+            List<CollabPod> allCampusPods = collabPodRepository.findByScope(PodScope.CAMPUS);
+
+            // Filter for only LOOKING_FOR type pods
+            java.util.List<CollabPod> lookingForPods = (allCampusPods != null ? allCampusPods
+                    : new java.util.ArrayList<CollabPod>())
+                    .stream()
+                    .filter(pod -> pod.getType() != null && pod.getType() == CollabPod.PodType.LOOKING_FOR)
+                    .toList();
+
+            return ResponseEntity.ok(lookingForPods);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Strict endpoint for GLOBAL scope only.
+     * Returns only pods with scope=GLOBAL.
+     * Used by CollabRooms to prevent Campus pods from appearing in Global rooms
+     * view.
+     */
+    @GetMapping("/global")
+    public ResponseEntity<List<CollabPod>> getGlobalPods() {
+        try {
+            List<CollabPod> pods = collabPodRepository.findByScope(PodScope.GLOBAL);
+            return ResponseEntity.ok(pods != null ? pods : new java.util.ArrayList<>());
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -76,12 +131,9 @@ public class CollabPodController {
             List<CollabPod> pods = collabPodRepository.findAll();
 
             // Handle null or empty database
-            if (pods == null) {
-                return ResponseEntity.ok(new java.util.ArrayList<>());
-            }
-
             // Filter for pods with status LOOKING_FOR_MEMBERS or ACTIVE
-            java.util.List<CollabPod> filtered = pods.stream()
+            java.util.List<CollabPod> filtered = (pods != null ? pods : new java.util.ArrayList<CollabPod>())
+                    .stream()
                     .filter(pod -> pod.getStatus() != null &&
                             (pod.getStatus().toString().equals("LOOKING_FOR_MEMBERS") ||
                                     pod.getStatus().toString().equals("ACTIVE")))
@@ -94,15 +146,11 @@ public class CollabPodController {
     }
 
     @GetMapping("/my-teams")
-    public ResponseEntity<List<CollabPod>> getMyTeams() {
+    public ResponseEntity<List<CollabPod>> getMyTeams(@RequestParam(required = false) String scope) {
         try {
-            // This endpoint would typically filter by current user
-            // For now, returning all pods as a placeholder
-            List<CollabPod> pods = collabPodRepository.findAll();
-            if (pods == null) {
-                return ResponseEntity.ok(new java.util.ArrayList<>());
-            }
-            return ResponseEntity.ok(pods);
+            // TODO: Implement My Teams functionality in the future
+            // For now, return empty list
+            return ResponseEntity.ok(new java.util.ArrayList<>());
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -154,5 +202,84 @@ public class CollabPodController {
         @SuppressWarnings("null")
         CollabPod savedPod = collabPodRepository.save(newPod);
         return new ResponseEntity<>(savedPod, HttpStatus.CREATED);
+    }
+
+    /**
+     * Join a pod endpoint - adds user to pod members list
+     */
+    @PostMapping("/{id}/join")
+    public ResponseEntity<?> joinPod(@PathVariable String id,
+            @RequestBody(required = false) java.util.Map<String, String> payload) {
+        try {
+            @SuppressWarnings("null")
+            java.util.Optional<CollabPod> podOpt = collabPodRepository.findById(id);
+            if (podOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(java.util.Map.of("error", "Pod not found"));
+            }
+
+            CollabPod pod = podOpt.get();
+
+            // For now, we'll accept any user joining
+            // In production, extract userId from authentication
+            String userId = payload != null ? payload.get("userId") : null;
+            if (userId == null || userId.isEmpty()) {
+                return ResponseEntity.badRequest().body(java.util.Map.of("error", "userId is required"));
+            }
+
+            // Add userId to members list (create if missing)
+            if (pod.getMemberIds() == null) {
+                pod.setMemberIds(new java.util.ArrayList<>());
+            }
+
+            if (!pod.getMemberIds().contains(userId)) {
+                pod.getMemberIds().add(userId);
+                collabPodRepository.save(pod);
+            }
+
+            return ResponseEntity.ok(java.util.Map.of("message", "Successfully joined pod", "pod", pod));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(java.util.Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Delete a pod with cascade operations (ONE-WAY CASCADE).
+     * 
+     * Flow: Pod deletion → Messages deleted → Linked post deleted
+     * 
+     * Returns metadata including which post type tabs need to refresh on client.
+     * This ensures users don't see ghost posts after a pod is deleted.
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deletePod(@PathVariable String id) {
+        try {
+            // Fetch pod BEFORE deletion to determine scope and return refresh info
+            @SuppressWarnings("null")
+            java.util.Optional<CollabPod> podOpt = collabPodRepository.findById(id);
+
+            String scope = "UNKNOWN";
+            if (podOpt.isPresent()) {
+                CollabPod pod = podOpt.get();
+                scope = pod.getScope() != null ? pod.getScope().toString() : "UNKNOWN";
+            }
+
+            // Perform cascade delete
+            collabPodService.deletePod(id);
+
+            // Return response with refresh metadata
+            // Frontend should use this to refresh post tabs appropriately
+            return ResponseEntity.ok().body(java.util.Map.of(
+                    "message", "Pod deleted successfully",
+                    "deletedPodId", id,
+                    "scope", scope,
+                    "shouldRefreshPostTabs", true));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(java.util.Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 }

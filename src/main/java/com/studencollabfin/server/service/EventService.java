@@ -6,6 +6,7 @@ import com.studencollabfin.server.repository.EventRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -38,9 +39,36 @@ public class EventService {
         newEvent.setCategory(request.getCategory());
         newEvent.setOrganizer(request.getOrganizer());
 
-        // Note: You will need to handle the String dates and other fields from your DTO
-        // here
-        // For now, we are just setting the basic fields.
+        // ✅ FIX: Properly parse date and time strings and convert to LocalDateTime
+        try {
+            // Parse date (format: YYYY-MM-DD from HTML date input)
+            // Parse time (format: HH:mm from HTML time input)
+            String dateStr = request.getDate(); // e.g., "2025-09-19"
+            String timeStr = request.getTime(); // e.g., "21:30"
+
+            if (dateStr != null && !dateStr.isEmpty() && timeStr != null && !timeStr.isEmpty()) {
+                // Combine date and time into ISO format string
+                String dateTimeStr = dateStr + "T" + timeStr + ":00";
+                LocalDateTime startDate = LocalDateTime.parse(dateTimeStr);
+                newEvent.setStartDate(startDate);
+
+                // Set endDate to 2 hours after start (optional, adjust as needed)
+                newEvent.setEndDate(startDate.plusHours(2));
+            }
+        } catch (Exception e) {
+            System.err.println("Error parsing date/time: " + e.getMessage());
+            // If parsing fails, leave dates as null - frontend will handle gracefully
+        }
+
+        // ✅ FIX: Map the requiredSkills field
+        newEvent.setRequiredSkills(request.getRequiredSkills());
+
+        // ✅ FIX: Map the maxTeamSize field
+        newEvent.setMaxParticipants(request.getMaxTeamSize() != null ? request.getMaxTeamSize() : 4);
+
+        // Set default values for other fields
+        newEvent.setStatus(Event.EventStatus.UPCOMING);
+        newEvent.setType(Event.EventType.OTHER);
 
         // Save the new event to the database
         return eventRepository.save(newEvent);

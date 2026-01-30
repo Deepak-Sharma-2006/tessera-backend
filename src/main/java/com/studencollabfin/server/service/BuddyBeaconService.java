@@ -17,6 +17,8 @@ public class BuddyBeaconService {
     private PostRepository postRepository;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private InboxRepository inboxRepository;
 
     // --- Beacon Post Logic ---
     public BuddyBeacon createBeaconPost(String userId, BuddyBeacon beaconPost) {
@@ -64,7 +66,17 @@ public class BuddyBeaconService {
         for (TeamFindingPost post : teamPosts) {
             Map<String, Object> postMap = new HashMap<>();
             postMap.put("type", "TeamFindingPost");
+
+            // ✅ FIX #3: Populate author information for display
+            if (post.getAuthorId() != null) {
+                Optional<User> authorOpt = userRepository.findById(post.getAuthorId());
+                if (authorOpt.isPresent()) {
+                    User author = authorOpt.get();
+                    post.setAuthorName(author.getFullName());
+                }
+            }
             postMap.put("post", post);
+
             long hoursElapsed = post.getCreatedAt() == null ? 0
                     : java.time.Duration.between(post.getCreatedAt(), LocalDateTime.now()).toHours();
             postMap.put("hoursElapsed", hoursElapsed);
@@ -81,7 +93,7 @@ public class BuddyBeaconService {
 
     /**
      * Returns all posts the current user has applied to, with status and post
-     * details.
+     * details. Excludes posts where the user is the author.
      */
     public List<Map<String, Object>> getAppliedPosts(String applicantId) {
         List<Application> applications = applicationRepository.findByApplicantId(applicantId);
@@ -96,20 +108,29 @@ public class BuddyBeaconService {
                 @SuppressWarnings("null")
                 var beaconOpt = beaconRepository.findById((String) app.getBeaconId());
                 beaconOpt.ifPresent(beacon -> {
-                    map.put("postType", "BuddyBeacon");
-                    map.put("post", beacon);
+                    // ✅ FIX #4: Exclude posts where user is the author
+                    if (!beacon.getAuthorId().equals(applicantId)) {
+                        map.put("postType", "BuddyBeacon");
+                        map.put("post", beacon);
+                    }
                 });
                 // Try TeamFindingPost
                 @SuppressWarnings("null")
                 var postOpt = postRepository.findById((String) app.getBeaconId());
                 postOpt.ifPresent(post -> {
                     if (post instanceof TeamFindingPost tfp) {
-                        map.put("postType", "TeamFindingPost");
-                        map.put("post", tfp);
+                        // ✅ FIX #4: Exclude posts where user is the author
+                        if (!tfp.getAuthorId().equals(applicantId)) {
+                            map.put("postType", "TeamFindingPost");
+                            map.put("post", tfp);
+                        }
                     }
                 });
             }
-            result.add(map);
+            // Only add to result if post data was populated (not author's own post)
+            if (map.containsKey("post")) {
+                result.add(map);
+            }
         }
         return result;
     }
@@ -137,14 +158,23 @@ public class BuddyBeaconService {
             List<Map<String, Object>> applicants = new ArrayList<>();
             for (Application app : apps) {
                 Map<String, Object> applicant = new HashMap<>();
-                applicant.put("application", app);
+                applicant.put("_id", app.getId());
+                applicant.put("applicationId", app.getId());
+                applicant.put("status", app.getStatus() != null ? app.getStatus().toString() : "PENDING");
                 if (app.getApplicantId() != null) {
                     @SuppressWarnings("null")
                     var userOpt = userRepository.findById((String) app.getApplicantId());
-                    userOpt.ifPresent(u -> applicant.put("profile", u));
+                    if (userOpt.isPresent()) {
+                        User user = userOpt.get();
+                        applicant.put("applicantId", app.getApplicantId());
+                        applicant.put("profile", user);
+                    }
                 }
                 applicants.add(applicant);
             }
+            // Add applicants to beacon for display
+            beacon.setApplicantObjects(applicants);
+            postMap.put("post", beacon);
             postMap.put("applicants", applicants);
             result.add(postMap);
         }
@@ -160,14 +190,22 @@ public class BuddyBeaconService {
             List<Map<String, Object>> applicants = new ArrayList<>();
             for (Application app : apps) {
                 Map<String, Object> applicant = new HashMap<>();
-                applicant.put("application", app);
+                applicant.put("_id", app.getId());
+                applicant.put("applicationId", app.getId());
+                applicant.put("status", app.getStatus() != null ? app.getStatus().toString() : "PENDING");
                 if (app.getApplicantId() != null) {
                     @SuppressWarnings("null")
                     var userOpt = userRepository.findById((String) app.getApplicantId());
-                    userOpt.ifPresent(u -> applicant.put("profile", u));
+                    if (userOpt.isPresent()) {
+                        User user = userOpt.get();
+                        applicant.put("applicantId", app.getApplicantId());
+                        applicant.put("profile", user);
+                    }
                 }
                 applicants.add(applicant);
             }
+            post.setApplicants(applicants);
+            postMap.put("post", post);
             postMap.put("applicants", applicants);
             result.add(postMap);
         }
@@ -175,7 +213,9 @@ public class BuddyBeaconService {
     }
 
     /**
-     * Application logic: Only allow if post is ACTIVE (<20h).
+     * Application logic: Only allow if post is ACTIVE (<20h) and applicant is not
+     * the creator.
+     * TESTING: Self-application check is commented out for testing purposes
      */
     @SuppressWarnings("null")
     public Application applyToBeaconPost(String beaconId, String applicantId, Application application) {
@@ -184,6 +224,11 @@ public class BuddyBeaconService {
         Optional<BuddyBeacon> beaconOpt = beaconRepository.findById((String) beaconId);
         if (beaconOpt.isPresent()) {
             BuddyBeacon beacon = beaconOpt.get();
+            // ✅ FIX #3: Prevent creator from applying to their own post
+            // TESTING: BYPASSED - Allow self-application for testing
+            // if (beacon.getAuthorId().equals(applicantId)) {
+            // throw new RuntimeException("Cannot apply to your own team post");
+            // }
             if (beacon.getCreatedAt() != null) {
                 long hours = java.time.Duration.between(beacon.getCreatedAt(), LocalDateTime.now()).toHours();
                 if (hours >= 20)
@@ -198,6 +243,11 @@ public class BuddyBeaconService {
         // Try TeamFindingPost
         Optional<Post> postOpt = postRepository.findById((String) beaconId);
         if (postOpt.isPresent() && postOpt.get() instanceof TeamFindingPost teamPost) {
+            // ✅ FIX #3: Prevent creator from applying to their own post
+            // TESTING: BYPASSED - Allow self-application for testing
+            // if (teamPost.getAuthorId().equals(applicantId)) {
+            // throw new RuntimeException("Cannot apply to your own team post");
+            // }
             if (teamPost.computePostState() != PostState.ACTIVE) {
                 throw new RuntimeException("Applications are closed for this post");
             }
@@ -232,6 +282,20 @@ public class BuddyBeaconService {
                     members.add(app.getApplicantId());
                     beacon.setCurrentTeamMemberIds(members);
                     beaconRepository.save(beacon);
+
+                    // ✅ FEATURE: Create inbox notification for the applicant
+                    Inbox inboxMessage = new Inbox();
+                    inboxMessage.setUserId(app.getApplicantId());
+                    inboxMessage.setType("APPLICATION_FEEDBACK");
+                    inboxMessage.setTitle("Application Accepted!");
+                    inboxMessage.setMessage("Congratulations! You've been accepted to '" + beacon.getTitle() + "'!");
+                    inboxMessage.setApplicationId(applicationId);
+                    inboxMessage.setPostId(postId);
+                    inboxMessage.setPostTitle(beacon.getTitle());
+                    inboxMessage.setSenderId(userId);
+                    inboxMessage.setApplicationStatus("ACCEPTED");
+                    inboxRepository.save(inboxMessage);
+
                     // TODO: Send Collab Pod invitation logic here
                     return applicationRepository.save(app);
                 }
@@ -256,6 +320,20 @@ public class BuddyBeaconService {
                     members.add(app.getApplicantId());
                     teamPost.setCurrentTeamMembers(members);
                     postRepository.save(teamPost);
+
+                    // ✅ FEATURE: Create inbox notification for the applicant
+                    Inbox inboxMessage = new Inbox();
+                    inboxMessage.setUserId(app.getApplicantId());
+                    inboxMessage.setType("APPLICATION_FEEDBACK");
+                    inboxMessage.setTitle("Application Accepted!");
+                    inboxMessage.setMessage("Congratulations! You've been accepted to '" + teamPost.getTitle() + "'!");
+                    inboxMessage.setApplicationId(applicationId);
+                    inboxMessage.setPostId(postId);
+                    inboxMessage.setPostTitle(teamPost.getTitle());
+                    inboxMessage.setSenderId(userId);
+                    inboxMessage.setApplicationStatus("ACCEPTED");
+                    inboxRepository.save(inboxMessage);
+
                     // TODO: Send Collab Pod invitation logic here
                     return applicationRepository.save(app);
                 }
@@ -283,6 +361,22 @@ public class BuddyBeaconService {
                     app.setStatus(Application.Status.REJECTED);
                     app.setRejectionReason(reason);
                     app.setRejectionNote(note);
+
+                    // ✅ FEATURE: Create inbox notification for the applicant
+                    Inbox inboxMessage = new Inbox();
+                    inboxMessage.setUserId(app.getApplicantId());
+                    inboxMessage.setType("APPLICATION_FEEDBACK");
+                    inboxMessage.setTitle("Application Rejected");
+                    inboxMessage.setMessage("Your application to '" + beacon.getTitle() + "' has been rejected.");
+                    inboxMessage.setApplicationId(applicationId);
+                    inboxMessage.setPostId(postId);
+                    inboxMessage.setPostTitle(beacon.getTitle());
+                    inboxMessage.setSenderId(userId);
+                    inboxMessage.setApplicationStatus("REJECTED");
+                    inboxMessage.setRejectionReason(reason != null ? reason.toString() : "");
+                    inboxMessage.setRejectionNote(note);
+                    inboxRepository.save(inboxMessage);
+
                     return applicationRepository.save(app);
                 }
             }
@@ -300,6 +394,22 @@ public class BuddyBeaconService {
                     app.setStatus(Application.Status.REJECTED);
                     app.setRejectionReason(reason);
                     app.setRejectionNote(note);
+
+                    // ✅ FEATURE: Create inbox notification for the applicant
+                    Inbox inboxMessage = new Inbox();
+                    inboxMessage.setUserId(app.getApplicantId());
+                    inboxMessage.setType("APPLICATION_FEEDBACK");
+                    inboxMessage.setTitle("Application Rejected");
+                    inboxMessage.setMessage("Your application to '" + teamPost.getTitle() + "' has been rejected.");
+                    inboxMessage.setApplicationId(applicationId);
+                    inboxMessage.setPostId(postId);
+                    inboxMessage.setPostTitle(teamPost.getTitle());
+                    inboxMessage.setSenderId(userId);
+                    inboxMessage.setApplicationStatus("REJECTED");
+                    inboxMessage.setRejectionReason(reason != null ? reason.toString() : "");
+                    inboxMessage.setRejectionNote(note);
+                    inboxRepository.save(inboxMessage);
+
                     return applicationRepository.save(app);
                 }
             }

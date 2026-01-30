@@ -6,6 +6,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Document(collection = "beacons")
@@ -22,6 +23,7 @@ public class BuddyBeacon {
     private List<String> currentTeamMemberIds;
     private String status;
     private List<String> applicants; // For tracking users who applied to this beacon
+    private List<Map<String, Object>> applicantObjects; // ✅ FEATURE: Full applicant data with profiles
 
     // Add this annotation to handle the date format correctly
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
@@ -48,5 +50,13 @@ public class BuddyBeacon {
 
     public void setCurrentTeamMemberIds(List<String> ids) {
         this.currentTeamMemberIds = ids;
+    }
+
+    public void setApplicantObjects(List<Map<String, Object>> applicantObjects) {
+        this.applicantObjects = applicantObjects;
+    }
+
+    public List<Map<String, Object>> getApplicantObjects() {
+        return this.applicantObjects;
     }
 }

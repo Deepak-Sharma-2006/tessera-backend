@@ -4,6 +4,7 @@ import com.studencollabfin.server.model.Post;
 import com.studencollabfin.server.model.SocialPost;
 import com.studencollabfin.server.model.TeamFindingPost;
 import com.studencollabfin.server.service.PostService;
+import com.studencollabfin.server.service.UserService;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.aggregation.AggregationResults;
@@ -45,6 +46,28 @@ public class PostController {
 
     private final PostService postService;
     private final MongoTemplate mongoTemplate;
+    private final UserService userService;
+
+    // Helper method to add author details to richPost
+    private void addAuthorDetailsToPost(java.util.Map<String, Object> richPost, String authorId) {
+        try {
+            com.studencollabfin.server.model.User user = userService.getUserById(authorId);
+            if (user != null) {
+                richPost.put("authorName", user.getFullName() != null ? user.getFullName() : "Unknown User");
+                richPost.put("authorCollege", user.getCollegeName() != null ? user.getCollegeName() : "");
+                richPost.put("authorYear", user.getYearOfStudy() != null ? user.getYearOfStudy() : "");
+            } else {
+                richPost.put("authorName", "Unknown User");
+                richPost.put("authorCollege", "");
+                richPost.put("authorYear", "");
+            }
+        } catch (Exception e) {
+            // If user fetch fails, use defaults
+            richPost.put("authorName", "Unknown User");
+            richPost.put("authorCollege", "");
+            richPost.put("authorYear", "");
+        }
+    }
 
     // Extracts user ID from Authentication or X-User-Id header
     private String getCurrentUserId(Authentication authentication, HttpServletRequest request) {
@@ -97,6 +120,10 @@ public class PostController {
             richPost.put("id", post.getId());
             richPost.put("authorId", post.getAuthorId());
             richPost.put("createdAt", post.getCreatedAt() != null ? post.getCreatedAt().toString() : "");
+
+            // Add author details (name, college, year)
+            addAuthorDetailsToPost(richPost, post.getAuthorId());
+
             if (post instanceof com.studencollabfin.server.model.SocialPost) {
                 com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
                 richPost.put("title", social.getTitle() != null ? social.getTitle() : "");
@@ -104,12 +131,13 @@ public class PostController {
                 richPost.put("type", social.getType() != null ? social.getType().name() : "");
                 richPost.put("postType", social.getType() != null ? social.getType().name() : "");
                 richPost.put("likes", social.getLikes() != null ? social.getLikes() : new java.util.ArrayList<>());
-                richPost.put("comments",
-                        social.getComments() != null ? social.getComments() : new java.util.ArrayList<>());
+                richPost.put("commentIds",
+                        social.getCommentIds() != null ? social.getCommentIds() : new java.util.ArrayList<>());
                 richPost.put("pollOptions",
                         social.getPollOptions() != null ? social.getPollOptions() : new java.util.ArrayList<>());
                 richPost.put("requiredSkills",
                         social.getRequiredSkills() != null ? social.getRequiredSkills() : new java.util.ArrayList<>());
+                richPost.put("linkedPodId", social.getLinkedPodId() != null ? social.getLinkedPodId() : "");
             } else if (post instanceof com.studencollabfin.server.model.TeamFindingPost) {
                 com.studencollabfin.server.model.TeamFindingPost team = (com.studencollabfin.server.model.TeamFindingPost) post;
                 richPost.put("title", team.getContent());
@@ -185,12 +213,15 @@ public class PostController {
                     com.studencollabfin.server.model.PostType.LOOKING_FOR,
                     com.studencollabfin.server.model.PostType.POLL);
 
-            // Filter for campus posts only
+            // Filter for campus posts only - by type and category
             java.util.List<Post> campusPosts = new java.util.ArrayList<>();
             for (Post post : posts) {
                 if (post instanceof com.studencollabfin.server.model.SocialPost) {
                     com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
-                    if (campusTypes.contains(social.getType())) {
+                    // Include posts with CAMPUS category or no category set (backward
+                    // compatibility)
+                    String category = social.getCategory() != null ? social.getCategory() : "CAMPUS";
+                    if (campusTypes.contains(social.getType()) && ("CAMPUS".equals(category) || category == null)) {
                         campusPosts.add(post);
                     }
                 } else if (post instanceof com.studencollabfin.server.model.TeamFindingPost) {
@@ -237,12 +268,14 @@ public class PostController {
                     com.studencollabfin.server.model.PostType.COLLAB,
                     com.studencollabfin.server.model.PostType.POLL);
 
-            // Filter for inter posts only
+            // Filter for inter posts only - by type and category
             java.util.List<Post> interPosts = new java.util.ArrayList<>();
             for (Post post : posts) {
                 if (post instanceof com.studencollabfin.server.model.SocialPost) {
                     com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
-                    if (interTypes.contains(social.getType())) {
+                    // Only include posts with INTER category
+                    String category = social.getCategory() != null ? social.getCategory() : "CAMPUS";
+                    if (interTypes.contains(social.getType()) && "INTER".equals(category)) {
                         interPosts.add(post);
                     }
                 }
@@ -277,7 +310,7 @@ public class PostController {
 
     @PostMapping("/{postId}/comment")
     public ResponseEntity<Object> addCommentToPost(@PathVariable String postId, @RequestBody CommentRequest req) {
-        com.studencollabfin.server.model.SocialPost.Comment saved = postService.addCommentToPost(postId, req);
+        com.studencollabfin.server.model.Comment saved = postService.addCommentToPost(postId, req);
         return ResponseEntity.ok(saved);
     }
 
@@ -314,14 +347,15 @@ public class PostController {
                 com.studencollabfin.server.model.PostType.LOOKING_FOR,
                 com.studencollabfin.server.model.PostType.POLL);
 
-        // Get all posts and count by type for campus
+        // Get all posts and count by type for campus - filter by CAMPUS category
         List<Post> allPosts = postService.getAllPosts();
         for (com.studencollabfin.server.model.PostType ptype : campusTypes) {
             long count = 0;
             for (Post post : allPosts) {
                 if (post instanceof com.studencollabfin.server.model.SocialPost) {
                     com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
-                    if (social.getType() == ptype)
+                    String category = social.getCategory() != null ? social.getCategory() : "CAMPUS";
+                    if (social.getType() == ptype && ("CAMPUS".equals(category) || category == null))
                         count++;
                 }
             }
@@ -338,14 +372,15 @@ public class PostController {
                 com.studencollabfin.server.model.PostType.COLLAB,
                 com.studencollabfin.server.model.PostType.POLL);
 
-        // Get all posts and count by type for inter
+        // Get all posts and count by type for inter - filter by INTER category
         List<Post> allPosts = postService.getAllPosts();
         for (com.studencollabfin.server.model.PostType ptype : interTypes) {
             long count = 0;
             for (Post post : allPosts) {
                 if (post instanceof com.studencollabfin.server.model.SocialPost) {
                     com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
-                    if (social.getType() == ptype)
+                    String category = social.getCategory() != null ? social.getCategory() : "CAMPUS";
+                    if (social.getType() == ptype && "INTER".equals(category))
                         count++;
                 }
             }
@@ -369,8 +404,8 @@ public class PostController {
                 richPost.put("type", social.getType() != null ? social.getType().name() : "");
                 richPost.put("postType", social.getType() != null ? social.getType().name() : "");
                 richPost.put("likes", social.getLikes() != null ? social.getLikes() : new java.util.ArrayList<>());
-                richPost.put("comments",
-                        social.getComments() != null ? social.getComments() : new java.util.ArrayList<>());
+                richPost.put("commentIds",
+                        social.getCommentIds() != null ? social.getCommentIds() : new java.util.ArrayList<>());
                 richPost.put("pollOptions",
                         social.getPollOptions() != null ? social.getPollOptions() : new java.util.ArrayList<>());
                 richPost.put("requiredSkills",
@@ -453,6 +488,10 @@ public class PostController {
             richPost.put("id", post.getId());
             richPost.put("authorId", post.getAuthorId());
             richPost.put("createdAt", post.getCreatedAt() != null ? post.getCreatedAt().toString() : "");
+
+            // Add author details (name, college, year)
+            addAuthorDetailsToPost(richPost, post.getAuthorId());
+
             if (post instanceof com.studencollabfin.server.model.SocialPost) {
                 com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
                 richPost.put("title", social.getTitle() != null ? social.getTitle() : "");
@@ -460,12 +499,13 @@ public class PostController {
                 richPost.put("type", social.getType() != null ? social.getType().name() : "");
                 richPost.put("postType", social.getType() != null ? social.getType().name() : "");
                 richPost.put("likes", social.getLikes() != null ? social.getLikes() : new java.util.ArrayList<>());
-                richPost.put("comments",
-                        social.getComments() != null ? social.getComments() : new java.util.ArrayList<>());
+                richPost.put("commentIds",
+                        social.getCommentIds() != null ? social.getCommentIds() : new java.util.ArrayList<>());
                 richPost.put("pollOptions",
                         social.getPollOptions() != null ? social.getPollOptions() : new java.util.ArrayList<>());
                 richPost.put("requiredSkills",
                         social.getRequiredSkills() != null ? social.getRequiredSkills() : new java.util.ArrayList<>());
+                richPost.put("linkedPodId", social.getLinkedPodId() != null ? social.getLinkedPodId() : "");
             } else if (post instanceof com.studencollabfin.server.model.TeamFindingPost) {
                 com.studencollabfin.server.model.TeamFindingPost team = (com.studencollabfin.server.model.TeamFindingPost) post;
                 richPost.put("title", team.getContent());

@@ -24,11 +24,13 @@ public class CollabPod {
     private List<String> topics;
     private PodType type; // Changed from 'podType' to 'type' to match frontend
     private PodStatus status;
+    private PodScope scope; // CAMPUS or GLOBAL
     private LocalDateTime createdAt;
     private LocalDateTime lastActive;
     private List<String> resources; // Links to study materials
     private List<Meeting> meetings;
     private List<String> applicants; // Users who have applied to join this pod
+    private String linkedPostId; // For GLOBAL pods: reference to the original COLLAB post
 
     @Data
     public static class Meeting {
@@ -49,7 +51,8 @@ public class CollabPod {
         PROJECT_TEAM,
         MENTORSHIP,
         COURSE_SPECIFIC,
-        LOOKING_FOR
+        LOOKING_FOR,
+        COLLAB // Global collaboration rooms created from COLLAB posts
     }
 
     public enum PodStatus {
@@ -64,5 +67,12 @@ public class CollabPod {
         IN_PROGRESS,
         COMPLETED,
         CANCELLED
+    }
+
+    /**
+     * Get the member count, handling null memberIds gracefully
+     */
+    public int getMemberCount() {
+        return memberIds != null ? memberIds.size() : 0;
     }
 }

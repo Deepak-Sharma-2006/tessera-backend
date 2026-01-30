@@ -1,7 +1,7 @@
 package com.studencollabfin.server.controller;
 
 import com.studencollabfin.server.dto.CommentRequest;
-import com.studencollabfin.server.model.SocialPost;
+import com.studencollabfin.server.model.Comment;
 import com.studencollabfin.server.service.PostService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
@@ -18,10 +18,10 @@ public class CommentWSController {
     @SuppressWarnings("null")
     @MessageMapping("/post.{postId}.comment")
     public void handleComment(@DestinationVariable String postId, CommentRequest payload) {
-        // Ensure the post is retrieved and updated in a persisted manner
-        SocialPost.Comment saved = postService.addCommentToPost(postId, payload);
+        // Save comment to comments collection
+        Comment saved = postService.addCommentToPost(postId, payload);
 
-        // Only broadcast after save
+        // Broadcast the saved comment
         java.util.Map<String, Object> envelope = new java.util.HashMap<>();
         envelope.put("comment", saved);
         envelope.put("parentId", payload.getParentId());
