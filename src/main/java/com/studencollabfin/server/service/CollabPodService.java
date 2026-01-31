@@ -680,11 +680,9 @@ public class CollabPodService {
             systemMessage.setText(messageText);
             systemMessage.setContent(messageText);
             systemMessage.setMessageType(Message.MessageType.SYSTEM);
-            systemMessage.setAuthorName(actorName);
             systemMessage.setSenderId(actorId);
             systemMessage.setSenderName(actorName);
-            systemMessage.setSentAt(LocalDateTime.now());
-            systemMessage.setTimestamp(LocalDateTime.now());
+            systemMessage.setSentAt(new Date());
 
             messageRepository.save(systemMessage);
             System.out.println("✅ SYSTEM message saved: " + messageText);
@@ -761,11 +759,9 @@ public class CollabPodService {
             systemMessage.setText(messageText);
             systemMessage.setContent(messageText);
             systemMessage.setMessageType(Message.MessageType.SYSTEM);
-            systemMessage.setAuthorName(actorName);
             systemMessage.setSenderId(actorId);
             systemMessage.setSenderName(actorName);
-            systemMessage.setSentAt(LocalDateTime.now());
-            systemMessage.setTimestamp(LocalDateTime.now());
+            systemMessage.setSentAt(new Date());
 
             messageRepository.save(systemMessage);
             System.out.println("✅ SYSTEM message saved: " + messageText);

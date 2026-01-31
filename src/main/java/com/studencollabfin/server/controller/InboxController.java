@@ -130,7 +130,8 @@ public class InboxController {
     /**
      * ✅ Delete multiple inbox items in bulk
      * 
-     * @param body Request body containing list of item IDs: { "ids": ["id1", "id2"] }
+     * @param body Request body containing list of item IDs: { "ids": ["id1", "id2"]
+     *             }
      * @return Count of deleted items
      */
     @DeleteMapping("/bulk")
@@ -140,7 +141,7 @@ public class InboxController {
 
         try {
             List<String> ids = body.get("ids");
-            
+
             if (ids == null || ids.isEmpty()) {
                 return ResponseEntity.badRequest().body("No IDs provided");
             }
@@ -164,7 +165,8 @@ public class InboxController {
      * ✅ Clear all inbox items of a specific type for the current user
      * 
      * @param userId The ID of the current user
-     * @param type The notification type to clear (e.g., APPLICATION_REJECTION, POD_BAN)
+     * @param type   The notification type to clear (e.g., APPLICATION_REJECTION,
+     *               POD_BAN)
      * @return Count of deleted items
      */
     @DeleteMapping("/clear-type")
@@ -176,7 +178,7 @@ public class InboxController {
         try {
             // Find all items of this type for the user
             List<Inbox> items = inboxRepository.findByUserIdAndType(userId, type);
-            
+
             if (items.isEmpty()) {
                 System.out.println("  ℹ️ No items of type " + type + " found for user " + userId);
                 return ResponseEntity.ok(Map.of("deleted", 0));
@@ -209,7 +211,7 @@ public class InboxController {
         try {
             // Find all items for this user
             List<Inbox> items = inboxRepository.findByUserId(userId);
-            
+
             if (items.isEmpty()) {
                 System.out.println("  ℹ️ No items found for user " + userId);
                 return ResponseEntity.ok(Map.of("deleted", 0));
