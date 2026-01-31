@@ -1,12 +1,17 @@
 package com.studencollabfin.server.repository;
 
 import com.studencollabfin.server.model.Inbox;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import java.util.List;
 
 public interface InboxRepository extends MongoRepository<Inbox, String> {
+
     // Find all inbox items for a specific user
     List<Inbox> findByUserId(String userId);
+
+    // Find all inbox items for a user, sorted by timestamp (newest first)
+    List<Inbox> findByUserId(String userId, Sort sort);
 
     // Find unread inbox items for a user
     List<Inbox> findByUserIdAndReadFalse(String userId);

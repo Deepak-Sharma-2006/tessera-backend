@@ -4,17 +4,20 @@ import com.studencollabfin.server.model.CollabPod;
 import com.studencollabfin.server.model.Message;
 import com.studencollabfin.server.model.PodCooldown;
 import com.studencollabfin.server.model.User;
+import com.studencollabfin.server.model.Inbox;
 import com.studencollabfin.server.repository.CollabPodRepository;
 import com.studencollabfin.server.repository.MessageRepository;
 import com.studencollabfin.server.repository.PostRepository;
 import com.studencollabfin.server.repository.UserRepository;
 import com.studencollabfin.server.repository.PodCooldownRepository;
+import com.studencollabfin.server.repository.InboxRepository;
 import com.studencollabfin.server.exception.PermissionDeniedException;
 import com.studencollabfin.server.exception.CooldownException;
 import com.studencollabfin.server.exception.BannedFromPodException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
@@ -47,6 +50,9 @@ public class CollabPodService {
 
     @Autowired
     private PodCooldownRepository podCooldownRepository;
+
+    @Autowired
+    private InboxRepository inboxRepository;
 
     @SuppressWarnings("null")
     public CollabPod createPod(String creatorId, CollabPod pod) {
@@ -219,62 +225,71 @@ public class CollabPodService {
      * This prevents circular delete and ensures ghost data doesn't appear in post
      * tabs.
      */
+    @Transactional
     @SuppressWarnings("null")
     public void deletePod(String podId) {
+        System.out.println("🗑️ Starting cascade delete for pod: " + podId);
+
+        // Step 1: Fetch Pod Details
         Optional<CollabPod> podOpt = collabPodRepository.findById(podId);
         if (podOpt.isEmpty()) {
-            System.out.println("Pod not found: " + podId);
+            System.out.println("❌ Pod not found: " + podId);
             throw new RuntimeException("CollabPod not found");
         }
 
         CollabPod pod = podOpt.get();
-        System.out.println("🗑️ Starting cascade delete for pod: " + podId);
         System.out.println("   Pod name: " + pod.getName());
-        System.out.println("   Linked post ID: " + pod.getLinkedPostId());
+        System.out.println("   Source post ID: " + pod.getLinkedPostId());
 
-        // Step 1: Delete all messages/data inside this pod
         try {
+            // Step 2: Delete all messages where podId matches
             System.out.println("📝 Deleting messages for pod: " + podId);
             podMessageService.deleteMessagesByPodId(podId);
             System.out.println("✅ Messages deleted for pod: " + podId);
-        } catch (Exception ex) {
-            System.err.println("⚠️ Failed to delete messages for pod " + podId + ": " + ex.getMessage());
-            ex.printStackTrace();
-        }
 
-        // Step 2: Delete the linked post (either GLOBAL COLLAB or CAMPUS LOOKING_FOR)
-        // This is the ONLY direction of cascade - posts do NOT trigger pod deletion
-        if (pod.getLinkedPostId() != null && !pod.getLinkedPostId().isEmpty()) {
-            try {
-                System.out.println("📮 Attempting to delete linked post: " + pod.getLinkedPostId());
-
-                // First verify the post exists
-                Optional<?> postOpt = postRepository.findById(pod.getLinkedPostId());
-                if (postOpt.isEmpty()) {
-                    System.out.println("⚠️ Linked post not found: " + pod.getLinkedPostId());
-                } else {
-                    System.out.println("📍 Post found: " + postOpt.get().getClass().getSimpleName());
-                    postRepository.deleteById(pod.getLinkedPostId());
-
-                    // Verify deletion
-                    Optional<?> postAfterDelete = postRepository.findById(pod.getLinkedPostId());
-                    if (postAfterDelete.isEmpty()) {
-                        System.out.println(
-                                "✅ Cascade Delete: Linked post " + pod.getLinkedPostId() + " deleted for pod " + podId);
-                    } else {
-                        System.err.println("❌ ERROR: Post " + pod.getLinkedPostId() + " still exists after delete!");
-                    }
-                }
-            } catch (Exception ex) {
-                System.err.println("⚠️ Failed to delete linked post: " + ex.getMessage());
-                ex.printStackTrace();
+            // Step 3: Delete all cooldowns where podId matches
+            System.out.println("⏱️ Deleting cooldowns for pod: " + podId);
+            List<PodCooldown> cooldowns = podCooldownRepository.findByPodId(podId);
+            if (!cooldowns.isEmpty()) {
+                System.out.println("   Found " + cooldowns.size() + " cooldown(s) to delete");
+                podCooldownRepository.deleteAll(cooldowns);
+                System.out.println("✅ Cooldowns deleted for pod: " + podId);
+            } else {
+                System.out.println("   No cooldowns found for pod: " + podId);
             }
-        } else {
-            System.out.println("⚠️ No linked post ID found for pod: " + podId);
-        }
 
-        // Step 3: Delete the pod itself
-        try {
+            // Step 4: Delete the source post
+            if (pod.getLinkedPostId() != null && !pod.getLinkedPostId().isEmpty()) {
+                System.out.println("📮 Deleting source post: " + pod.getLinkedPostId());
+
+                try {
+                    // Verify the post exists
+                    Optional<?> postOpt = postRepository.findById(pod.getLinkedPostId());
+                    if (postOpt.isEmpty()) {
+                        System.out.println("⚠️ Source post not found: " + pod.getLinkedPostId());
+                    } else {
+                        String postType = postOpt.get().getClass().getSimpleName();
+                        System.out.println("   Post type: " + postType);
+                        postRepository.deleteById(pod.getLinkedPostId());
+
+                        // Verify deletion
+                        Optional<?> postAfterDelete = postRepository.findById(pod.getLinkedPostId());
+                        if (postAfterDelete.isEmpty()) {
+                            System.out.println("✅ Source post " + pod.getLinkedPostId() + " deleted");
+                        } else {
+                            System.err.println("❌ ERROR: Source post " + pod.getLinkedPostId() + " still exists!");
+                        }
+                    }
+                } catch (Exception ex) {
+                    System.err.println("⚠️ Failed to delete source post: " + ex.getMessage());
+                    ex.printStackTrace();
+                    throw ex;
+                }
+            } else {
+                System.out.println("⚠️ No source post ID found for pod: " + podId);
+            }
+
+            // Step 5: Delete the pod itself
             System.out.println("🗑️ Deleting pod from database: " + podId);
             collabPodRepository.deleteById(podId);
 
@@ -284,11 +299,14 @@ public class CollabPodService {
                 System.out.println("✅ Pod " + podId + " and all its data deleted successfully");
             } else {
                 System.err.println("❌ ERROR: Pod " + podId + " still exists after delete!");
+                throw new RuntimeException("Pod deletion failed - pod still exists");
             }
+
         } catch (Exception ex) {
-            System.err.println("⚠️ Failed to delete pod " + podId + ": " + ex.getMessage());
+            System.err.println("❌ Cascade delete failed for pod " + podId + ": " + ex.getMessage());
             ex.printStackTrace();
-            throw new RuntimeException("Failed to delete pod", ex);
+            // @Transactional will handle rollback automatically
+            throw new RuntimeException("Cascade delete failed for pod " + podId, ex);
         }
     }
 
@@ -391,6 +409,28 @@ public class CollabPodService {
             System.out.println("  ✓ System message logged: " + savedMsg.getId());
         } catch (Exception e) {
             System.err.println("⚠️ Failed to log system message: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        // Step 9: Create Inbox notification for the banned user (NEW - STAGE 3)
+        try {
+            System.out.println("  ℹ️ Creating inbox notification for banned user: " + targetId);
+            Inbox inboxNotification = new Inbox();
+            inboxNotification.setUserId(targetId);
+            inboxNotification.setType(Inbox.NotificationType.POD_BAN.toString());
+            inboxNotification.setTitle("You were removed from " + pod.getName());
+            inboxNotification
+                    .setMessage("Reason: " + (reason != null && !reason.isEmpty() ? reason : "No reason provided"));
+            inboxNotification.setSeverity(Inbox.NotificationSeverity.HIGH.toString());
+            inboxNotification.setPodId(podId);
+            inboxNotification.setPodName(pod.getName());
+            inboxNotification.setReason(reason);
+            inboxNotification.setRead(false);
+
+            inboxRepository.save(inboxNotification);
+            System.out.println("  ✓ Inbox notification created for banned user");
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to create inbox notification: " + e.getMessage());
             e.printStackTrace();
         }
 
@@ -567,6 +607,170 @@ public class CollabPodService {
         } catch (Exception e) {
             System.err.println("⚠️ Failed to log system message: " + e.getMessage());
             e.printStackTrace();
+        }
+
+        return updatedPod;
+    }
+
+    /**
+     * ✅ STAGE 4: Promote a Member to Admin
+     * 
+     * Permission: Only Owner can promote
+     * Action: Move targetId from memberIds to adminIds
+     * Audit: Create SYSTEM message "Owner promoted [User] to Admin"
+     * 
+     * @param podId    The pod ID
+     * @param actorId  The user performing the promotion (must be Owner)
+     * @param targetId The user being promoted
+     * @return Updated CollabPod
+     * @throws PermissionDeniedException If actor is not the Owner
+     * @throws RuntimeException          If pod/user not found
+     */
+    public CollabPod promoteToAdmin(String podId, String actorId, String targetId) {
+        System.out.println(
+                "🚀 CollabPodService.promoteToAdmin: pod=" + podId + ", actor=" + actorId + ", target=" + targetId);
+
+        // Fetch the pod
+        @SuppressWarnings("null")
+        java.util.Optional<CollabPod> podOpt = collabPodRepository.findById(podId);
+        if (podOpt.isEmpty()) {
+            throw new RuntimeException("Pod not found: " + podId);
+        }
+        CollabPod pod = podOpt.get();
+
+        // ✅ Permission check: Only Owner can promote
+        if (pod.getOwnerId() == null || !pod.getOwnerId().equals(actorId)) {
+            System.out.println("❌ Permission denied: Only the Pod Owner can promote members");
+            throw new PermissionDeniedException("Only the Pod Owner can promote members");
+        }
+
+        // Check if target is already an Admin
+        if (pod.getAdminIds() != null && pod.getAdminIds().contains(targetId)) {
+            System.out.println("⚠️ User is already an Admin");
+            return pod;
+        }
+
+        // ✅ Move from memberIds to adminIds
+        if (pod.getMemberIds() != null && pod.getMemberIds().contains(targetId)) {
+            pod.getMemberIds().remove(targetId);
+            System.out.println("✅ Removed " + targetId + " from memberIds");
+        }
+
+        if (pod.getAdminIds() == null) {
+            pod.setAdminIds(new java.util.ArrayList<>());
+        }
+        if (!pod.getAdminIds().contains(targetId)) {
+            pod.getAdminIds().add(targetId);
+            System.out.println("✅ Added " + targetId + " to adminIds");
+        }
+
+        // Save updated pod
+        CollabPod updatedPod = collabPodRepository.save(pod);
+        System.out.println("✅ Pod saved with promoted admin");
+
+        // ✅ Create SYSTEM message for audit trail
+        try {
+            String actorName = getUserName(actorId);
+            String targetName = getUserName(targetId);
+            String messageText = actorName + " promoted " + targetName + " to Admin";
+
+            Message systemMessage = new Message();
+            systemMessage.setPodId(podId);
+            systemMessage.setConversationId(podId);
+            systemMessage.setText(messageText);
+            systemMessage.setContent(messageText);
+            systemMessage.setMessageType(Message.MessageType.SYSTEM);
+            systemMessage.setAuthorName(actorName);
+            systemMessage.setSenderId(actorId);
+            systemMessage.setSenderName(actorName);
+            systemMessage.setSentAt(LocalDateTime.now());
+            systemMessage.setTimestamp(LocalDateTime.now());
+
+            messageRepository.save(systemMessage);
+            System.out.println("✅ SYSTEM message saved: " + messageText);
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to create SYSTEM message: " + e.getMessage());
+        }
+
+        return updatedPod;
+    }
+
+    /**
+     * ✅ STAGE 4: Demote an Admin to Member
+     * 
+     * Permission: Only Owner can demote
+     * Action: Move targetId from adminIds back to memberIds
+     * Audit: Create SYSTEM message "Owner demoted [User] to Member"
+     * 
+     * @param podId    The pod ID
+     * @param actorId  The user performing the demotion (must be Owner)
+     * @param targetId The admin being demoted
+     * @return Updated CollabPod
+     * @throws PermissionDeniedException If actor is not the Owner
+     * @throws RuntimeException          If pod/user not found
+     */
+    public CollabPod demoteToMember(String podId, String actorId, String targetId) {
+        System.out.println(
+                "📉 CollabPodService.demoteToMember: pod=" + podId + ", actor=" + actorId + ", target=" + targetId);
+
+        // Fetch the pod
+        @SuppressWarnings("null")
+        java.util.Optional<CollabPod> podOpt = collabPodRepository.findById(podId);
+        if (podOpt.isEmpty()) {
+            throw new RuntimeException("Pod not found: " + podId);
+        }
+        CollabPod pod = podOpt.get();
+
+        // ✅ Permission check: Only Owner can demote
+        if (pod.getOwnerId() == null || !pod.getOwnerId().equals(actorId)) {
+            System.out.println("❌ Permission denied: Only the Pod Owner can demote admins");
+            throw new PermissionDeniedException("Only the Pod Owner can demote admins");
+        }
+
+        // Check if target is actually an Admin
+        if (pod.getAdminIds() == null || !pod.getAdminIds().contains(targetId)) {
+            System.out.println("⚠️ User is not an Admin");
+            return pod;
+        }
+
+        // ✅ Move from adminIds to memberIds
+        pod.getAdminIds().remove(targetId);
+        System.out.println("✅ Removed " + targetId + " from adminIds");
+
+        if (pod.getMemberIds() == null) {
+            pod.setMemberIds(new java.util.ArrayList<>());
+        }
+        if (!pod.getMemberIds().contains(targetId)) {
+            pod.getMemberIds().add(targetId);
+            System.out.println("✅ Added " + targetId + " to memberIds");
+        }
+
+        // Save updated pod
+        CollabPod updatedPod = collabPodRepository.save(pod);
+        System.out.println("✅ Pod saved with demoted member");
+
+        // ✅ Create SYSTEM message for audit trail
+        try {
+            String actorName = getUserName(actorId);
+            String targetName = getUserName(targetId);
+            String messageText = actorName + " demoted " + targetName + " to Member";
+
+            Message systemMessage = new Message();
+            systemMessage.setPodId(podId);
+            systemMessage.setConversationId(podId);
+            systemMessage.setText(messageText);
+            systemMessage.setContent(messageText);
+            systemMessage.setMessageType(Message.MessageType.SYSTEM);
+            systemMessage.setAuthorName(actorName);
+            systemMessage.setSenderId(actorId);
+            systemMessage.setSenderName(actorName);
+            systemMessage.setSentAt(LocalDateTime.now());
+            systemMessage.setTimestamp(LocalDateTime.now());
+
+            messageRepository.save(systemMessage);
+            System.out.println("✅ SYSTEM message saved: " + messageText);
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to create SYSTEM message: " + e.getMessage());
         }
 
         return updatedPod;

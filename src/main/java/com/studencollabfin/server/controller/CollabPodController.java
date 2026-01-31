@@ -286,9 +286,9 @@ public class CollabPodController {
      * 
      * Request body:
      * {
-     *   "actorId": "user123",        // User performing the kick
-     *   "targetId": "user456",       // User being kicked
-     *   "reason": "Spam"             // Reason: Spam, Harassment, Other
+     * "actorId": "user123", // User performing the kick
+     * "targetId": "user456", // User being kicked
+     * "reason": "Spam" // Reason: Spam, Harassment, Other
      * }
      * 
      * Response: Updated CollabPod or error
@@ -325,7 +325,7 @@ public class CollabPodController {
      * 
      * Request body:
      * {
-     *   "userId": "user123"
+     * "userId": "user123"
      * }
      * 
      * Response: Success message or error
@@ -382,6 +382,72 @@ public class CollabPodController {
                     .body(Map.of(
                             "error", e.getMessage(),
                             "minutesRemaining", e.getMinutesRemaining()));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * ✅ STAGE 4: Promote a Member to Admin
+     * POST /pods/{id}/promote-to-admin
+     * 
+     * Only Owner can promote members
+     * Moves user from memberIds to adminIds
+     * Creates SYSTEM message for audit trail
+     */
+    @PostMapping("/{id}/promote-to-admin")
+    public ResponseEntity<?> promoteToAdmin(@PathVariable String id,
+            @RequestBody java.util.Map<String, String> payload) {
+        try {
+            String actorId = payload.get("actorId");
+            String targetId = payload.get("targetId");
+
+            if (actorId == null || targetId == null) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "actorId and targetId are required"));
+            }
+
+            CollabPod updatedPod = collabPodService.promoteToAdmin(id, actorId, targetId);
+            return ResponseEntity.ok(updatedPod);
+
+        } catch (PermissionDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * ✅ STAGE 4: Demote an Admin to Member
+     * POST /pods/{id}/demote-to-member
+     * 
+     * Only Owner can demote admins
+     * Moves user from adminIds to memberIds
+     * Creates SYSTEM message for audit trail
+     */
+    @PostMapping("/{id}/demote-to-member")
+    public ResponseEntity<?> demoteToMember(@PathVariable String id,
+            @RequestBody java.util.Map<String, String> payload) {
+        try {
+            String actorId = payload.get("actorId");
+            String targetId = payload.get("targetId");
+
+            if (actorId == null || targetId == null) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "actorId and targetId are required"));
+            }
+
+            CollabPod updatedPod = collabPodService.demoteToMember(id, actorId, targetId);
+            return ResponseEntity.ok(updatedPod);
+
+        } catch (PermissionDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
