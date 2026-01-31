@@ -32,7 +32,7 @@ public class PodCooldown {
     private String podId;
 
     // Cooldown expiration date - TTL index auto-deletes records after 15 minutes
-    @Indexed(expireAfterSeconds = 0)
+    @Indexed(expireAfterSeconds = 900) // 15 minutes
     private LocalDateTime expiryDate;
 
     // Additional metadata

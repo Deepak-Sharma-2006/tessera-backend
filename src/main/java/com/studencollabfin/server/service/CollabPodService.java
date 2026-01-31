@@ -62,6 +62,7 @@ public class CollabPodService {
 
         pod.setCreatorId(creatorId);
         pod.setOwnerId(creatorId);
+        pod.setOwnerName(user.getFullName() != null ? user.getFullName() : user.getId()); // Store owner name
         pod.setCreatedAt(LocalDateTime.now());
         pod.setLastActive(LocalDateTime.now());
         pod.setStatus(CollabPod.PodStatus.ACTIVE);
@@ -85,6 +86,15 @@ public class CollabPodService {
         // memberIds)
         if (pod.getMemberIds() == null) {
             pod.setMemberIds(new java.util.ArrayList<>());
+        }
+        if (pod.getMemberNames() == null) {
+            pod.setMemberNames(new java.util.ArrayList<>());
+        }
+        if (pod.getAdminIds() == null) {
+            pod.setAdminIds(new java.util.ArrayList<>());
+        }
+        if (pod.getAdminNames() == null) {
+            pod.setAdminNames(new java.util.ArrayList<>());
         }
         // DO NOT add creator to memberIds - they are the owner!
 
@@ -418,10 +428,28 @@ public class CollabPodService {
             throw new PermissionDeniedException("Cannot kick the pod owner");
         }
 
-        // Step 7: Move target from memberIds/adminIds to bannedIds
+        // Step 7: Move target from memberIds/adminIds to bannedIds (including names)
         System.out.println("  ✓ Hierarchy check passed: " + actorRole + " can kick " + targetRole);
-        pod.getMemberIds().remove(targetId);
-        pod.getAdminIds().remove(targetId);
+
+        int memberIndex = -1;
+        if (pod.getMemberIds() != null) {
+            memberIndex = pod.getMemberIds().indexOf(targetId);
+            pod.getMemberIds().remove(targetId);
+            // Remove corresponding name
+            if (memberIndex >= 0 && pod.getMemberNames() != null && memberIndex < pod.getMemberNames().size()) {
+                pod.getMemberNames().remove(memberIndex);
+            }
+        }
+
+        int adminIndex = -1;
+        if (pod.getAdminIds() != null) {
+            adminIndex = pod.getAdminIds().indexOf(targetId);
+            pod.getAdminIds().remove(targetId);
+            // Remove corresponding name
+            if (adminIndex >= 0 && pod.getAdminNames() != null && adminIndex < pod.getAdminNames().size()) {
+                pod.getAdminNames().remove(adminIndex);
+            }
+        }
 
         if (pod.getBannedIds() == null) {
             pod.setBannedIds(new java.util.ArrayList<>());
@@ -432,7 +460,7 @@ public class CollabPodService {
 
         pod.setLastActive(LocalDateTime.now());
         CollabPod updatedPod = collabPodRepository.save(pod);
-        System.out.println("  ✓ User " + targetId + " moved to bannedIds");
+        System.out.println("  ✓ User " + targetId + " moved to bannedIds and names removed");
 
         // Step 8: Create SYSTEM message for audit trail
         try {
@@ -509,17 +537,31 @@ public class CollabPodService {
         boolean wasAdmin = pod.getAdminIds() != null && pod.getAdminIds().contains(userId);
         System.out.println("  ℹ️ User was admin: " + wasAdmin);
 
-        // Step 4: Remove user from BOTH memberIds AND adminIds arrays
+        // Step 4: Remove user from BOTH memberIds AND adminIds arrays, along with their
+        // names
         // Safe removal - if not in list, remove() just returns false without error
+        int memberIndex = -1;
         if (pod.getMemberIds() != null) {
+            memberIndex = pod.getMemberIds().indexOf(userId);
             pod.getMemberIds().remove(userId);
+            // Remove corresponding name
+            if (memberIndex >= 0 && pod.getMemberNames() != null && memberIndex < pod.getMemberNames().size()) {
+                pod.getMemberNames().remove(memberIndex);
+            }
         }
+
+        int adminIndex = -1;
         if (pod.getAdminIds() != null) {
+            adminIndex = pod.getAdminIds().indexOf(userId);
             pod.getAdminIds().remove(userId);
+            // Remove corresponding name
+            if (adminIndex >= 0 && pod.getAdminNames() != null && adminIndex < pod.getAdminNames().size()) {
+                pod.getAdminNames().remove(adminIndex);
+            }
         }
         pod.setLastActive(LocalDateTime.now());
 
-        System.out.println("  ✓ User removed from memberIds and adminIds (if present)");
+        System.out.println("  ✓ User removed from memberIds/adminIds and their corresponding names");
 
         // Step 5: Update pod status if needed
         if (pod.getStatus() == CollabPod.PodStatus.FULL &&
@@ -702,11 +744,19 @@ public class CollabPodService {
         }
 
         // Step 3: Check cooldown status
+        System.out.println("  ℹ️ Checking cooldown for user " + userId + " in pod " + podId);
         Optional<PodCooldown> cooldownOpt = podCooldownRepository.findByUserIdAndPodId(userId, podId);
+
         if (cooldownOpt.isPresent()) {
             PodCooldown cooldown = cooldownOpt.get();
             LocalDateTime now = LocalDateTime.now();
             LocalDateTime expiryDate = cooldown.getExpiryDate();
+
+            System.out.println("  ⏱️ Cooldown record found:");
+            System.out.println("     - Created: " + cooldown.getCreatedAt());
+            System.out.println("     - Expiry: " + expiryDate);
+            System.out.println("     - Now: " + now);
+            System.out.println("     - Expired? " + (now.isAfter(expiryDate) || now.equals(expiryDate)));
 
             if (now.isBefore(expiryDate)) {
                 // User is still on cooldown
@@ -720,6 +770,8 @@ public class CollabPodService {
                 podCooldownRepository.delete(cooldown);
                 System.out.println("  ✓ Cooldown expired, record deleted");
             }
+        } else {
+            System.out.println("  ✓ No cooldown record found - user can join");
         }
 
         // Step 4: Check if user is already a member
@@ -737,20 +789,27 @@ public class CollabPodService {
             throw new RuntimeException("CollabPod is full");
         }
 
-        // Step 6: Add user to memberIds
+        // Step 6: Add user to memberIds and memberNames
         if (pod.getMemberIds() == null) {
             pod.setMemberIds(new java.util.ArrayList<>());
         }
+        if (pod.getMemberNames() == null) {
+            pod.setMemberNames(new java.util.ArrayList<>());
+        }
+
+        // Get user name and add both ID and name
+        String userName = getUserName(userId);
         pod.getMemberIds().add(userId);
+        pod.getMemberNames().add(userName);
         pod.setLastActive(LocalDateTime.now());
 
         CollabPod updatedPod = collabPodRepository.save(pod);
         System.out.println(
-                "  ✓ User " + userId + " added to memberIds (total members: " + pod.getMemberIds().size() + ")");
+                "  ✓ User " + userId + " (" + userName + ") added to memberIds (total members: "
+                        + pod.getMemberIds().size() + ")");
 
         // Step 7: Log SYSTEM message
         try {
-            String userName = getUserName(userId);
             Message systemMsg = new Message();
             systemMsg.setMessageType(Message.MessageType.SYSTEM);
             systemMsg.setPodId(podId);
@@ -808,18 +867,30 @@ public class CollabPodService {
             return pod;
         }
 
-        // ✅ Move from memberIds to adminIds
+        // ✅ Move from memberIds to adminIds (including names)
+        int memberIndex = -1;
         if (pod.getMemberIds() != null && pod.getMemberIds().contains(targetId)) {
+            memberIndex = pod.getMemberIds().indexOf(targetId);
             pod.getMemberIds().remove(targetId);
+            // Remove corresponding name from memberNames
+            if (memberIndex >= 0 && pod.getMemberNames() != null && memberIndex < pod.getMemberNames().size()) {
+                pod.getMemberNames().remove(memberIndex);
+            }
             System.out.println("✅ Removed " + targetId + " from memberIds");
         }
 
         if (pod.getAdminIds() == null) {
             pod.setAdminIds(new java.util.ArrayList<>());
         }
+        if (pod.getAdminNames() == null) {
+            pod.setAdminNames(new java.util.ArrayList<>());
+        }
+
         if (!pod.getAdminIds().contains(targetId)) {
+            String targetName = getUserName(targetId);
             pod.getAdminIds().add(targetId);
-            System.out.println("✅ Added " + targetId + " to adminIds");
+            pod.getAdminNames().add(targetName);
+            System.out.println("✅ Added " + targetId + " (" + targetName + ") to adminIds");
         }
 
         // Save updated pod
@@ -889,16 +960,30 @@ public class CollabPodService {
             return pod;
         }
 
-        // ✅ Move from adminIds to memberIds
-        pod.getAdminIds().remove(targetId);
-        System.out.println("✅ Removed " + targetId + " from adminIds");
+        // ✅ Move from adminIds to memberIds (including names)
+        int adminIndex = -1;
+        if (pod.getAdminIds() != null) {
+            adminIndex = pod.getAdminIds().indexOf(targetId);
+            pod.getAdminIds().remove(targetId);
+            // Remove corresponding name from adminNames
+            if (adminIndex >= 0 && pod.getAdminNames() != null && adminIndex < pod.getAdminNames().size()) {
+                pod.getAdminNames().remove(adminIndex);
+            }
+            System.out.println("✅ Removed " + targetId + " from adminIds");
+        }
 
         if (pod.getMemberIds() == null) {
             pod.setMemberIds(new java.util.ArrayList<>());
         }
+        if (pod.getMemberNames() == null) {
+            pod.setMemberNames(new java.util.ArrayList<>());
+        }
+
         if (!pod.getMemberIds().contains(targetId)) {
+            String targetName = getUserName(targetId);
             pod.getMemberIds().add(targetId);
-            System.out.println("✅ Added " + targetId + " to memberIds");
+            pod.getMemberNames().add(targetName);
+            System.out.println("✅ Added " + targetId + " (" + targetName + ") to memberIds");
         }
 
         // Save updated pod

@@ -251,35 +251,25 @@ public class CollabPodController {
     public ResponseEntity<?> joinPod(@PathVariable String id,
             @RequestBody(required = false) java.util.Map<String, String> payload) {
         try {
-            @SuppressWarnings("null")
-            java.util.Optional<CollabPod> podOpt = collabPodRepository.findById(id);
-            if (podOpt.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(java.util.Map.of("error", "Pod not found"));
-            }
-
-            CollabPod pod = podOpt.get();
-
-            // For now, we'll accept any user joining
-            // In production, extract userId from authentication
             String userId = payload != null ? payload.get("userId") : null;
             if (userId == null || userId.isEmpty()) {
                 return ResponseEntity.badRequest().body(java.util.Map.of("error", "userId is required"));
             }
 
-            // Add userId to members list (create if missing)
-            if (pod.getMemberIds() == null) {
-                pod.setMemberIds(new java.util.ArrayList<>());
+            // Use the enhanced join method that checks cooldown
+            try {
+                CollabPod updatedPod = collabPodService.joinPod(id, userId);
+                return ResponseEntity.ok(java.util.Map.of("message", "Successfully joined pod", "pod", updatedPod));
+            } catch (com.studencollabfin.server.exception.CooldownException e) {
+                // Return 429 status for cooldown
+                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                        .body(java.util.Map.of(
+                                "error", e.getMessage(),
+                                "minutesRemaining", e.getMinutesRemaining()));
+            } catch (com.studencollabfin.server.exception.BannedFromPodException e) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(java.util.Map.of("error", e.getMessage()));
             }
-
-            if (!pod.getMemberIds().contains(userId)) {
-                pod.getMemberIds().add(userId);
-                collabPodRepository.save(pod);
-
-                // 📊 GAMIFICATION: Award XP for joining a pod
-                gamificationService.awardXp(userId, XPAction.JOIN_POD);
-            }
-
-            return ResponseEntity.ok(java.util.Map.of("message", "Successfully joined pod", "pod", pod));
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
