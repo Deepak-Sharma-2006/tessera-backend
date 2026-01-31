@@ -12,27 +12,27 @@ import java.util.Optional;
  */
 @Repository
 public interface PodCooldownRepository extends MongoRepository<PodCooldown, String> {
-    
+
     /**
      * Find all active cooldowns for a specific user and pod
      */
     Optional<PodCooldown> findByUserIdAndPodId(String userId, String podId);
-    
+
     /**
      * Find all cooldowns for a user (to check all active cooldowns)
      */
     List<PodCooldown> findByUserId(String userId);
-    
+
     /**
      * Find all cooldowns for a pod (useful for admin monitoring)
      */
     List<PodCooldown> findByPodId(String podId);
-    
+
     /**
      * Check if a user is on cooldown for a specific pod
      */
     boolean existsByUserIdAndPodId(String userId, String podId);
-    
+
     /**
      * Delete all expired cooldowns (called periodically or after expiry)
      */

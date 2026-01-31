@@ -18,7 +18,7 @@ db.collabPods.updateMany(
             $set: {
                 // Convert creatorId to ownerId (immutable)
                 ownerId: "$creatorId",
-                
+
                 // Convert moderatorIds to adminIds
                 adminIds: {
                     $cond: [
@@ -27,7 +27,7 @@ db.collabPods.updateMany(
                         "$moderatorIds"
                     ]
                 },
-                
+
                 // Initialize empty bannedIds list
                 bannedIds: []
             }
@@ -83,7 +83,7 @@ db.messages.updateMany(
             $set: {
                 // Store old messageType as messageTypeString for reference
                 messageTypeString: "$messageType",
-                
+
                 // Set messageType to CHAT by default (existing messages are chat messages)
                 messageType: "CHAT"
             }
@@ -157,7 +157,7 @@ db.messages.getIndexes();
 // ============================================================================
 // The TTL index with expireAfterSeconds: 0 means MongoDB will delete documents
 // at the exact time specified in the expiryDate field.
-// 
+//
 // Example: If a cooldown is created at 10:00 with expiryDate = 10:15,
 // MongoDB will automatically delete the document at 10:15.
 //

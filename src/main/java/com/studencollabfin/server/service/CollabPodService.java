@@ -2,14 +2,22 @@ package com.studencollabfin.server.service;
 
 import com.studencollabfin.server.model.CollabPod;
 import com.studencollabfin.server.model.Message;
+import com.studencollabfin.server.model.PodCooldown;
+import com.studencollabfin.server.model.User;
 import com.studencollabfin.server.repository.CollabPodRepository;
 import com.studencollabfin.server.repository.MessageRepository;
 import com.studencollabfin.server.repository.PostRepository;
 import com.studencollabfin.server.repository.UserRepository;
+import com.studencollabfin.server.repository.PodCooldownRepository;
+import com.studencollabfin.server.exception.PermissionDeniedException;
+import com.studencollabfin.server.exception.CooldownException;
+import com.studencollabfin.server.exception.BannedFromPodException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
@@ -36,6 +44,9 @@ public class CollabPodService {
 
     @Autowired
     private MongoTemplate mongoTemplate;
+
+    @Autowired
+    private PodCooldownRepository podCooldownRepository;
 
     @SuppressWarnings("null")
     public CollabPod createPod(String creatorId, CollabPod pod) {
@@ -94,26 +105,6 @@ public class CollabPodService {
     }
 
     @SuppressWarnings("null")
-    public CollabPod joinPod(String podId, String userId) {
-        CollabPod pod = collabPodRepository.findById((String) podId)
-                .orElseThrow(() -> new RuntimeException("CollabPod not found"));
-
-        if (pod.getStatus() == CollabPod.PodStatus.FULL ||
-                pod.getMemberIds().size() >= pod.getMaxCapacity()) {
-            pod.setStatus(CollabPod.PodStatus.FULL);
-            collabPodRepository.save(pod);
-            throw new RuntimeException("CollabPod is full");
-        }
-
-        if (!pod.getMemberIds().contains(userId)) {
-            pod.getMemberIds().add(userId);
-            pod.setLastActive(LocalDateTime.now());
-        }
-
-        return collabPodRepository.save(pod);
-    }
-
-    @SuppressWarnings("null")
     public CollabPod scheduleMeeting(String podId, String moderatorId, CollabPod.Meeting meeting) {
         CollabPod pod = collabPodRepository.findById((String) podId)
                 .orElseThrow(() -> new RuntimeException("CollabPod not found"));
@@ -142,27 +133,6 @@ public class CollabPodService {
 
     public List<CollabPod> searchPodsByTopic(String topic) {
         return collabPodRepository.findByTopicsContaining(topic);
-    }
-
-    @SuppressWarnings("null")
-    public void leavePod(String podId, String userId) {
-        CollabPod pod = collabPodRepository.findById((String) podId)
-                .orElseThrow(() -> new RuntimeException("CollabPod not found"));
-
-        if (pod.getCreatorId().equals(userId)) {
-            throw new RuntimeException("Pod creator cannot leave. Transfer ownership or close the pod.");
-        }
-
-        pod.getMemberIds().remove(userId);
-        pod.getModeratorIds().remove(userId);
-        pod.setLastActive(LocalDateTime.now());
-
-        if (pod.getStatus() == CollabPod.PodStatus.FULL &&
-                pod.getMemberIds().size() < pod.getMaxCapacity()) {
-            pod.setStatus(CollabPod.PodStatus.ACTIVE);
-        }
-
-        collabPodRepository.save(pod);
     }
 
     public List<Message> getMessagesForPod(String podId) {
@@ -319,6 +289,298 @@ public class CollabPodService {
             System.err.println("⚠️ Failed to delete pod " + podId + ": " + ex.getMessage());
             ex.printStackTrace();
             throw new RuntimeException("Failed to delete pod", ex);
+        }
+    }
+
+    /**
+     * Kick a member from a pod with hierarchy checks and audit logging.
+     * 
+     * Hierarchy Rules:
+     * - Owner can kick Admins or Members
+     * - Admin can kick Members only
+     * - Members cannot kick anyone
+     * 
+     * @param podId        The pod ID
+     * @param actorId      The user performing the action (kicker)
+     * @param targetId     The user to be kicked
+     * @param reason       Reason for kicking (optional, for audit trail)
+     * @return Updated CollabPod
+     * @throws PermissionDeniedException if hierarchy is violated
+     */
+    public CollabPod kickMember(String podId, String actorId, String targetId, String reason) {
+        System.out.println("🚪 KICK: User " + actorId + " attempting to kick " + targetId + " from pod " + podId);
+
+        // Step 1: Fetch pod and validate it exists
+        CollabPod pod = collabPodRepository.findById(podId)
+                .orElseThrow(() -> new RuntimeException("CollabPod not found: " + podId));
+
+        // Step 2: Prevent self-kick
+        if (actorId.equals(targetId)) {
+            throw new PermissionDeniedException("You cannot kick yourself");
+        }
+
+        // Step 3: Determine actor's role and check hierarchy permissions
+        String actorRole;
+        if (pod.getOwnerId().equals(actorId)) {
+            actorRole = "OWNER";
+        } else if (pod.getAdminIds().contains(actorId)) {
+            actorRole = "ADMIN";
+        } else {
+            throw new PermissionDeniedException("Only owner or admin can kick members");
+        }
+
+        // Step 4: Determine target's role
+        String targetRole;
+        if (pod.getOwnerId().equals(targetId)) {
+            targetRole = "OWNER";
+        } else if (pod.getAdminIds().contains(targetId)) {
+            targetRole = "ADMIN";
+        } else if (pod.getMemberIds().contains(targetId)) {
+            targetRole = "MEMBER";
+        } else {
+            throw new RuntimeException("User is not in this pod");
+        }
+
+        // Step 5: Check hierarchy (OWNER > ADMIN > MEMBER)
+        if (actorRole.equals("ADMIN") && (targetRole.equals("ADMIN") || targetRole.equals("OWNER"))) {
+            throw new PermissionDeniedException(
+                    "Admin cannot kick another admin or the owner. Only owner can kick admins.");
+        }
+
+        if (actorRole.equals("MEMBER")) {
+            throw new PermissionDeniedException("Members cannot kick anyone");
+        }
+
+        // Step 6: Cannot kick the owner
+        if (targetRole.equals("OWNER")) {
+            throw new PermissionDeniedException("Cannot kick the pod owner");
+        }
+
+        // Step 7: Move target from memberIds/adminIds to bannedIds
+        System.out.println("  ✓ Hierarchy check passed: " + actorRole + " can kick " + targetRole);
+        pod.getMemberIds().remove(targetId);
+        pod.getAdminIds().remove(targetId);
+        
+        if (pod.getBannedIds() == null) {
+            pod.setBannedIds(new java.util.ArrayList<>());
+        }
+        if (!pod.getBannedIds().contains(targetId)) {
+            pod.getBannedIds().add(targetId);
+        }
+
+        pod.setLastActive(LocalDateTime.now());
+        CollabPod updatedPod = collabPodRepository.save(pod);
+        System.out.println("  ✓ User " + targetId + " moved to bannedIds");
+
+        // Step 8: Create SYSTEM message for audit trail
+        try {
+            String actorName = getUserName(actorId);
+            String targetName = getUserName(targetId);
+            String reasonText = (reason != null && !reason.isEmpty()) ? " - " + reason : "";
+            
+            Message systemMsg = new Message();
+            systemMsg.setMessageType(Message.MessageType.SYSTEM);
+            systemMsg.setPodId(podId);
+            systemMsg.setConversationId(podId);
+            systemMsg.setText("Admin " + actorName + " kicked " + targetName + reasonText);
+            systemMsg.setSentAt(new Date());
+            systemMsg.setRead(false);
+            systemMsg.setScope("CAMPUS");
+            
+            Message savedMsg = messageRepository.save(systemMsg);
+            System.out.println("  ✓ System message logged: " + savedMsg.getId());
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to log system message: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return updatedPod;
+    }
+
+    /**
+     * User leaves a pod and is placed on cooldown to prevent rejoin spam.
+     * 
+     * Actions:
+     * - Remove user from memberIds
+     * - Create PodCooldown record (auto-expires in 15 minutes via TTL)
+     * - Log SYSTEM message to audit trail
+     * 
+     * @param podId   The pod ID
+     * @param userId  The user leaving the pod
+     * @throws RuntimeException if pod not found or user is owner
+     */
+    public void leavePod(String podId, String userId) {
+        System.out.println("👋 LEAVE: User " + userId + " leaving pod " + podId);
+
+        // Step 1: Fetch pod
+        CollabPod pod = collabPodRepository.findById(podId)
+                .orElseThrow(() -> new RuntimeException("CollabPod not found: " + podId));
+
+        // Step 2: Prevent owner from leaving (they must transfer or close)
+        if (pod.getOwnerId().equals(userId)) {
+            throw new RuntimeException("Pod owner cannot leave. Transfer ownership or close the pod.");
+        }
+
+        // Step 3: Remove user from memberIds and adminIds
+        pod.getMemberIds().remove(userId);
+        pod.getAdminIds().remove(userId);
+        pod.setLastActive(LocalDateTime.now());
+
+        // Step 4: Update pod status if needed
+        if (pod.getStatus() == CollabPod.PodStatus.FULL &&
+                pod.getMemberIds().size() < pod.getMaxCapacity()) {
+            pod.setStatus(CollabPod.PodStatus.ACTIVE);
+            System.out.println("  ✓ Pod status changed from FULL to ACTIVE");
+        }
+
+        CollabPod updatedPod = collabPodRepository.save(pod);
+        System.out.println("  ✓ User " + userId + " removed from memberIds");
+
+        // Step 5: Create cooldown record (15 minutes)
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime expiryDate = now.plusMinutes(15);
+
+            PodCooldown cooldown = new PodCooldown();
+            cooldown.setUserId(userId);
+            cooldown.setPodId(podId);
+            cooldown.setAction("LEAVE");
+            cooldown.setCreatedAt(now);
+            cooldown.setExpiryDate(expiryDate);
+
+            PodCooldown savedCooldown = podCooldownRepository.save(cooldown);
+            System.out.println("  ✓ Cooldown created: " + savedCooldown.getId() + " (expires at " + expiryDate + ")");
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to create cooldown: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        // Step 6: Log SYSTEM message
+        try {
+            String userName = getUserName(userId);
+            Message systemMsg = new Message();
+            systemMsg.setMessageType(Message.MessageType.SYSTEM);
+            systemMsg.setPodId(podId);
+            systemMsg.setConversationId(podId);
+            systemMsg.setText(userName + " left the pod.");
+            systemMsg.setSentAt(new Date());
+            systemMsg.setRead(false);
+            systemMsg.setScope("CAMPUS");
+
+            Message savedMsg = messageRepository.save(systemMsg);
+            System.out.println("  ✓ System message logged: " + savedMsg.getId());
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to log system message: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * User joins a pod with cooldown and ban checks.
+     * 
+     * Checks:
+     * - Not on cooldown (from previous leave)
+     * - Not banned from the pod
+     * - Pod not full
+     * 
+     * @param podId   The pod ID
+     * @param userId  The user joining
+     * @return Updated CollabPod
+     * @throws CooldownException if user is on cooldown
+     * @throws BannedFromPodException if user is banned
+     * @throws RuntimeException if pod is full or not found
+     */
+    public CollabPod joinPod(String podId, String userId) {
+        System.out.println("✋ JOIN: User " + userId + " attempting to join pod " + podId);
+
+        // Step 1: Fetch pod
+        CollabPod pod = collabPodRepository.findById(podId)
+                .orElseThrow(() -> new RuntimeException("CollabPod not found: " + podId));
+
+        // Step 2: Check if user is banned
+        if (pod.getBannedIds() != null && pod.getBannedIds().contains(userId)) {
+            System.out.println("  ✗ User is banned from this pod");
+            throw new BannedFromPodException("You are banned from this pod and cannot rejoin");
+        }
+
+        // Step 3: Check cooldown status
+        Optional<PodCooldown> cooldownOpt = podCooldownRepository.findByUserIdAndPodId(userId, podId);
+        if (cooldownOpt.isPresent()) {
+            PodCooldown cooldown = cooldownOpt.get();
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime expiryDate = cooldown.getExpiryDate();
+
+            if (now.isBefore(expiryDate)) {
+                // User is still on cooldown
+                long minutesRemaining = ChronoUnit.MINUTES.between(now, expiryDate);
+                System.out.println("  ✗ User is on cooldown for " + minutesRemaining + " more minutes");
+                throw new CooldownException(
+                        "You cannot rejoin for another " + minutesRemaining + " minute(s). Try again later.",
+                        (int) minutesRemaining);
+            } else {
+                // Cooldown has expired, delete the record
+                podCooldownRepository.delete(cooldown);
+                System.out.println("  ✓ Cooldown expired, record deleted");
+            }
+        }
+
+        // Step 4: Check if user is already a member
+        if (pod.getMemberIds() != null && pod.getMemberIds().contains(userId)) {
+            System.out.println("  ℹ️ User is already a member");
+            return pod;
+        }
+
+        // Step 5: Check pod capacity
+        if (pod.getStatus() == CollabPod.PodStatus.FULL ||
+                (pod.getMaxCapacity() > 0 && pod.getMemberIds().size() >= pod.getMaxCapacity())) {
+            pod.setStatus(CollabPod.PodStatus.FULL);
+            collabPodRepository.save(pod);
+            System.out.println("  ✗ Pod is full");
+            throw new RuntimeException("CollabPod is full");
+        }
+
+        // Step 6: Add user to memberIds
+        if (pod.getMemberIds() == null) {
+            pod.setMemberIds(new java.util.ArrayList<>());
+        }
+        pod.getMemberIds().add(userId);
+        pod.setLastActive(LocalDateTime.now());
+
+        CollabPod updatedPod = collabPodRepository.save(pod);
+        System.out.println("  ✓ User " + userId + " added to memberIds (total members: " + pod.getMemberIds().size() + ")");
+
+        // Step 7: Log SYSTEM message
+        try {
+            String userName = getUserName(userId);
+            Message systemMsg = new Message();
+            systemMsg.setMessageType(Message.MessageType.SYSTEM);
+            systemMsg.setPodId(podId);
+            systemMsg.setConversationId(podId);
+            systemMsg.setText(userName + " joined the pod.");
+            systemMsg.setSentAt(new Date());
+            systemMsg.setRead(false);
+            systemMsg.setScope("CAMPUS");
+
+            Message savedMsg = messageRepository.save(systemMsg);
+            System.out.println("  ✓ System message logged: " + savedMsg.getId());
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to log system message: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return updatedPod;
+    }
+
+    /**
+     * Helper method to get user's display name from user ID
+     */
+    private String getUserName(String userId) {
+        try {
+            Optional<User> userOpt = userRepository.findById(userId);
+            return userOpt.map(User::getFullName).orElse("User");
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to fetch user name: " + e.getMessage());
+            return "User";
         }
     }
 }
