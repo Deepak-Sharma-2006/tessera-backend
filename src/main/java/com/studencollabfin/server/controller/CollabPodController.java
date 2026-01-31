@@ -6,14 +6,11 @@ import com.studencollabfin.server.model.PodScope;
 import com.studencollabfin.server.model.XPAction;
 import com.studencollabfin.server.repository.CollabPodRepository;
 import com.studencollabfin.server.service.CollabPodService;
-<<<<<<< HEAD
 import com.studencollabfin.server.service.GamificationService;
-=======
 import com.studencollabfin.server.service.UserService;
 import com.studencollabfin.server.exception.PermissionDeniedException;
 import com.studencollabfin.server.exception.CooldownException;
 import com.studencollabfin.server.exception.BannedFromPodException;
->>>>>>> origin/main
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,23 +35,15 @@ public class CollabPodController {
 
     private final CollabPodRepository collabPodRepository;
     private final CollabPodService collabPodService;
-<<<<<<< HEAD
     private final GamificationService gamificationService;
-
-    public CollabPodController(CollabPodRepository collabPodRepository, CollabPodService collabPodService,
-            GamificationService gamificationService) {
-        this.collabPodRepository = collabPodRepository;
-        this.collabPodService = collabPodService;
-        this.gamificationService = gamificationService;
-=======
     private final UserService userService;
 
     public CollabPodController(CollabPodRepository collabPodRepository, CollabPodService collabPodService,
-            UserService userService) {
+            GamificationService gamificationService, UserService userService) {
         this.collabPodRepository = collabPodRepository;
         this.collabPodService = collabPodService;
+        this.gamificationService = gamificationService;
         this.userService = userService;
->>>>>>> origin/main
     }
 
     /**
