@@ -36,27 +36,11 @@ public class UserController {
     public ResponseEntity<?> getProfile(@PathVariable String userId) {
         try {
             User user = userService.findById(userId);
-
-            // Auto-add Founding Dev badge if isDev is true
-            if (user.isDev() && (user.getBadges() == null || !user.getBadges().contains("Founding Dev"))) {
-                if (user.getBadges() == null) {
-                    user.setBadges(new ArrayList<>());
-                }
-                user.getBadges().add("Founding Dev");
-                userRepository.save(user);
-            }
-
-            // Auto-add Campus Catalyst badge if role is COLLEGE_HEAD
-            if ("COLLEGE_HEAD".equals(user.getRole())
-                    && (user.getBadges() == null || !user.getBadges().contains("Campus Catalyst"))) {
-                if (user.getBadges() == null) {
-                    user.setBadges(new ArrayList<>());
-                }
-                user.getBadges().add("Campus Catalyst");
-                userRepository.save(user);
-            }
-
-            return ResponseEntity.ok(user);
+            
+            // ✅ CRITICAL: Sync all badges based on current user attributes
+            User syncedUser = achievementService.syncUserBadges(user);
+            
+            return ResponseEntity.ok(syncedUser);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
@@ -67,27 +51,10 @@ public class UserController {
         try {
             User updatedUser = userService.updateUserProfile(userId, profileData);
 
-            // Auto-add Founding Dev badge if isDev is true
-            if (updatedUser.isDev()
-                    && (updatedUser.getBadges() == null || !updatedUser.getBadges().contains("Founding Dev"))) {
-                if (updatedUser.getBadges() == null) {
-                    updatedUser.setBadges(new ArrayList<>());
-                }
-                updatedUser.getBadges().add("Founding Dev");
-                updatedUser = userRepository.save(updatedUser);
-            }
+            // ✅ CRITICAL: Sync all badges after profile update
+            User syncedUser = achievementService.syncUserBadges(updatedUser);
 
-            // Auto-add Campus Catalyst badge if role is COLLEGE_HEAD
-            if ("COLLEGE_HEAD".equals(updatedUser.getRole())
-                    && (updatedUser.getBadges() == null || !updatedUser.getBadges().contains("Campus Catalyst"))) {
-                if (updatedUser.getBadges() == null) {
-                    updatedUser.setBadges(new ArrayList<>());
-                }
-                updatedUser.getBadges().add("Campus Catalyst");
-                updatedUser = userRepository.save(updatedUser);
-            }
-
-            return ResponseEntity.ok(updatedUser);
+            return ResponseEntity.ok(syncedUser);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
@@ -258,17 +225,12 @@ public class UserController {
             // 📊 GAMIFICATION: Award XP for receiving endorsement
             gamificationService.awardXp(userId, XPAction.RECEIVE_ENDORSEMENT);
 
-            // Reaching 3 endorsements unlocks the Skill Sage badge
-            if (user.getEndorsementsCount() >= 3 && !user.getBadges().contains("Skill Sage")) {
-                if (user.getBadges() == null) {
-                    user.setBadges(new ArrayList<>());
-                }
-                user.getBadges().add("Skill Sage");
-                achievementService.unlockAchievement(userId, "Skill Sage");
-            }
-
-            User updatedUser = userRepository.save(user);
-            return ResponseEntity.ok(updatedUser);
+            user = userRepository.save(user);
+            
+            // ✅ SYNC BADGES: Check if endorsement count triggered any badges
+            User syncedUser = achievementService.syncUserBadges(user);
+            
+            return ResponseEntity.ok(syncedUser);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
@@ -277,9 +239,8 @@ public class UserController {
     // ============ BADGE SYNCHRONIZATION ============
 
     /**
-     * Syncs badges based on user flags (isDev, role)
-     * Adds Founding Dev if isDev=true, Campus Catalyst if role=COLLEGE_HEAD
-     * Call this endpoint to ensure badges are properly assigned
+     * ✅ SYNC-BADGES ENDPOINT
+     * Calls AchievementService.syncUserBadges to update all badges based on user attributes
      */
     @PostMapping("/{userId}/sync-badges")
     public ResponseEntity<?> syncBadges(@PathVariable String userId) {
@@ -287,41 +248,10 @@ public class UserController {
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
-            if (user.getBadges() == null) {
-                user.setBadges(new ArrayList<>());
-            }
+            // ✅ ATTRIBUTE-DRIVEN SYNC: All badge logic consolidated in AchievementService
+            User syncedUser = achievementService.syncUserBadges(user);
 
-            boolean updated = false;
-
-            // Add Founding Dev badge if isDev is true
-            if (user.isDev() && !user.getBadges().contains("Founding Dev")) {
-                user.getBadges().add("Founding Dev");
-                updated = true;
-            }
-
-            // Add Campus Catalyst badge if role is COLLEGE_HEAD
-            if ("COLLEGE_HEAD".equals(user.getRole()) && !user.getBadges().contains("Campus Catalyst")) {
-                user.getBadges().add("Campus Catalyst");
-                updated = true;
-            }
-
-            // Remove Founding Dev if isDev is now false
-            if (!user.isDev() && user.getBadges().contains("Founding Dev")) {
-                user.getBadges().remove("Founding Dev");
-                updated = true;
-            }
-
-            // Remove Campus Catalyst if role is no longer COLLEGE_HEAD
-            if (!"COLLEGE_HEAD".equals(user.getRole()) && user.getBadges().contains("Campus Catalyst")) {
-                user.getBadges().remove("Campus Catalyst");
-                updated = true;
-            }
-
-            if (updated) {
-                user = userRepository.save(user);
-            }
-
-            return ResponseEntity.ok(user);
+            return ResponseEntity.ok(syncedUser);
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Error: " + e.getMessage());

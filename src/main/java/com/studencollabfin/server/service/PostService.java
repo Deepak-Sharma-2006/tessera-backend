@@ -77,6 +77,9 @@ public class PostService {
     @org.springframework.beans.factory.annotation.Autowired
     private CollabPodService collabPodService;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private AchievementService achievementService;
+
     /**
      * Delete a SocialPost with ONE-WAY cascade operations.
      * 
@@ -149,6 +152,21 @@ public class PostService {
 
         // Save the post first to get its ID
         Post savedPost = postRepository.save(post);
+
+        // ✅ INCREMENT postsCount on user for Signal Guardian badge tracking
+        try {
+            com.studencollabfin.server.model.User author = userService.getUserById(authorId);
+            if (author != null) {
+                author.setPostsCount((author.getPostsCount() == 0 ? 0 : author.getPostsCount()) + 1);
+                userService.updateUserProfile(authorId, author);
+                System.out.println("✓ Incremented postsCount for user: " + authorId + " (new count: " + author.getPostsCount() + ")");
+                
+                // ✅ SYNC BADGES: Check if user reached postsCount >= 5 for Signal Guardian
+                achievementService.syncUserBadges(author);
+            }
+        } catch (Exception ex) {
+            System.err.println("⚠️ Failed to increment postsCount or sync badges: " + ex.getMessage());
+        }
 
         // Now handle pod creation with the saved post's ID
         if (savedPost instanceof SocialPost) {

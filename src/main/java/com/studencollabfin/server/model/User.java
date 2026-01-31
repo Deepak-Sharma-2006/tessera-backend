@@ -29,6 +29,7 @@ public class User {
     private List<String> badges = new ArrayList<>(); // Achievement badges earned
     private List<String> displayedBadges = new ArrayList<>(); // Badges selected to display on public profile (max 3)
     private int endorsementsCount = 0; // Tracks skill endorsements for Skill Sage badge
+    private int postsCount = 0; // Tracks posts created for Signal Guardian badge
     private int level = 0; // Current level in Synergy (starts at 0)
     private int xp = 0; // Current XP towards next level
     private int totalXp = 0; // Total XP earned across all levels

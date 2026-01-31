@@ -54,6 +54,9 @@ public class CollabPodService {
     @Autowired
     private InboxRepository inboxRepository;
 
+    @Autowired
+    private AchievementService achievementService;
+
     @SuppressWarnings("null")
     public CollabPod createPod(String creatorId, CollabPod pod) {
         System.out.println("CollabPodService.createPod called with creatorId: " + creatorId);
@@ -747,6 +750,21 @@ public class CollabPodService {
         CollabPod updatedPod = collabPodRepository.save(pod);
         System.out.println(
                 "  ✓ User " + userId + " added to memberIds (total members: " + pod.getMemberIds().size() + ")");
+
+        // ✅ TRIGGER Pod Pioneer Badge on first pod join
+        achievementService.unlockAchievement(userId, "Pod Pioneer");
+        System.out.println("  ✓ Pod Pioneer badge triggered for user: " + userId);
+
+        // ✅ SYNC USER BADGES: Ensure all badges are up-to-date after pod join
+        try {
+            User user = userRepository.findById(userId).orElse(null);
+            if (user != null) {
+                User syncedUser = achievementService.syncUserBadges(user);
+                System.out.println("  ✓ Badges synced after pod join");
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to sync badges: " + e.getMessage());
+        }
 
         // Step 7: Log SYSTEM message
         try {
