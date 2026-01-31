@@ -809,7 +809,15 @@ public class CollabPodService {
             System.out.println("  ✓ No cooldown record found - user can join");
         }
 
-        // Step 4: Check if user is already a member
+        // Step 4: Check if user is already owner, admin, or member
+        if (pod.getOwnerId() != null && pod.getOwnerId().equals(userId)) {
+            System.out.println("  ℹ️ User is the pod owner, no need to join as member");
+            return pod;
+        }
+        if (pod.getAdminIds() != null && pod.getAdminIds().contains(userId)) {
+            System.out.println("  ℹ️ User is already an admin");
+            return pod;
+        }
         if (pod.getMemberIds() != null && pod.getMemberIds().contains(userId)) {
             System.out.println("  ℹ️ User is already a member");
             return pod;
