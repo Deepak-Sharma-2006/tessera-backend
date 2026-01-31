@@ -685,7 +685,8 @@ public class CollabPodService {
             // Also remove from memberNames at same index
             if (memberIndex >= 0 && pod.getMemberNames() != null && memberIndex < pod.getMemberNames().size()) {
                 pod.getMemberNames().remove(memberIndex);
-                System.out.println("✅ Removed " + newOwnerId + " from memberIds and memberNames at index " + memberIndex);
+                System.out
+                        .println("✅ Removed " + newOwnerId + " from memberIds and memberNames at index " + memberIndex);
             }
         }
 
