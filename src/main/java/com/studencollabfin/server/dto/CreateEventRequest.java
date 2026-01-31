@@ -12,6 +12,8 @@ public class CreateEventRequest {
     private String description;
     private List<String> requiredSkills;
     private Integer maxTeamSize;
-    private String externalLink;
+    private String registrationLink; // ✅ CHANGED: From externalLink to registrationLink
+    private String linkEndDate; // ✅ NEW: Registration deadline (ISO 8601 format)
     private String organizer;
+    private Integer maxTeams; // ✅ NEW: Maximum teams limit (for team events)
 }

@@ -10,4 +10,7 @@ public interface ApplicationRepository extends MongoRepository<Application, Stri
 
     // Find all applications by applicant
     List<Application> findByApplicantId(String applicantId);
+
+    // ✅ NEW: Check if user has CONFIRMED application for this post
+    boolean existsByBeaconIdAndApplicantIdAndStatus(String beaconId, String applicantId, Application.Status status);
 }

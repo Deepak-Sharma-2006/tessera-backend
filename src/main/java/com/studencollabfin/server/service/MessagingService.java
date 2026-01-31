@@ -47,7 +47,7 @@ public class MessagingService {
         msg.setRead(false);
 
         // Set messageType and scope for global inter-college/inter-campus conversations
-        msg.setMessageType("GLOBAL_ROOM");
+        msg.setMessageType(Message.MessageType.CHAT);
         msg.setScope("GLOBAL");
 
         if (conversationId != null) {

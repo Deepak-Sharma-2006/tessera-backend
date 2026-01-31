@@ -19,6 +19,10 @@ public class BuddyBeaconService {
     private UserRepository userRepository;
     @Autowired
     private InboxRepository inboxRepository;
+    @Autowired
+    private CollabPodRepository collabPodRepository;
+    @Autowired
+    private EventService eventService;
 
     // --- Beacon Post Logic ---
     public BuddyBeacon createBeaconPost(String userId, BuddyBeacon beaconPost) {
@@ -33,13 +37,35 @@ public class BuddyBeaconService {
     }
 
     /**
-     * Aggregates all BuddyBeacon and TeamFindingPost posts for the global feed.
+     * Aggregates all BuddyBeacon and TeamFindingPost posts for the current user's
+     * campus feed.
+     * ✅ Campus Isolation: Only returns posts from the current user's college.
      * TeamFindingPosts are included if ACTIVE or CLOSED (<24h old).
      */
-    public List<Map<String, Object>> getAllBeaconPosts(String currentUserId) {
+    public List<Map<String, Object>> getAllBeaconPosts(String currentUserId, String userCollege) {
         List<Map<String, Object>> feed = new ArrayList<>();
-        // Add BuddyBeacon posts (legacy)
-        List<BuddyBeacon> beacons = beaconRepository.findAll();
+
+        // Validate user college
+        if (userCollege == null || userCollege.trim().isEmpty()) {
+            System.out.println("⚠️ User college is null/empty, returning empty feed for Buddy Beacon");
+            return feed;
+        }
+
+        // Add BuddyBeacon posts (legacy) - filter by college
+        List<BuddyBeacon> beacons = beaconRepository.findAll().stream()
+                .filter(b -> {
+                    // For legacy BuddyBeacons, fetch author college if not stored
+                    if (b.getAuthorId() != null) {
+                        Optional<User> authorOpt = userRepository.findById(b.getAuthorId());
+                        if (authorOpt.isPresent()) {
+                            String authorCollege = authorOpt.get().getCollegeName();
+                            return userCollege.equals(authorCollege);
+                        }
+                    }
+                    return false;
+                })
+                .toList();
+
         for (BuddyBeacon beacon : beacons) {
             Map<String, Object> postMap = new HashMap<>();
             postMap.put("type", "BuddyBeacon");
@@ -54,15 +80,23 @@ public class BuddyBeaconService {
             postMap.put("hostId", beacon.getAuthorId());
             feed.add(postMap);
         }
-        // Add TeamFindingPosts (universal visibility)
+
+        // Add TeamFindingPosts (campus-filtered visibility)
         List<TeamFindingPost> teamPosts = postRepository.findAll().stream()
                 .filter(p -> p instanceof TeamFindingPost)
                 .map(p -> (TeamFindingPost) p)
                 .filter(p -> {
+                    // ✅ Campus Isolation: Only include posts from same college
+                    if (p.getCollege() == null || !p.getCollege().equals(userCollege)) {
+                        return false;
+                    }
                     PostState state = p.computePostState();
                     return state == PostState.ACTIVE || state == PostState.CLOSED;
                 })
                 .toList();
+
+        System.out.println("✅ Filtered TeamFindingPosts for college: " + userCollege + ", count: " + teamPosts.size());
+
         for (TeamFindingPost post : teamPosts) {
             Map<String, Object> postMap = new HashMap<>();
             postMap.put("type", "TeamFindingPost");
@@ -136,8 +170,34 @@ public class BuddyBeaconService {
     }
 
     /**
-     * Returns posts created by the authenticated user, with nested applicants and
-     * their public profiles.
+     * ✅ NEW: Check if a user is available to join a team for a specific event.
+     * Availability check:
+     * 1. Is user in a Pod for this event? -> NOT available
+     * 2. Is user CONFIRMED in any TeamFindingPost for this event? -> NOT available
+     * 3. Otherwise -> AVAILABLE
+     */
+    private boolean isUserAvailable(String eventId, String userId) {
+        // Check 1: User in a Pod for this event
+        boolean inPod = collabPodRepository.existsByEventIdAndMemberIdsContains(eventId, userId);
+        if (inPod) {
+            return false;
+        }
+
+        // Check 2: User CONFIRMED in any TeamFindingPost for this event
+        List<TeamFindingPost> eventPosts = postRepository.findByEventId(eventId);
+        boolean inConfirmedPost = eventPosts.stream()
+                .anyMatch(p -> {
+                    List<String> members = p.getCurrentTeamMembers();
+                    return members != null && members.contains(userId);
+                });
+
+        return !inConfirmedPost;
+    }
+
+    /**
+     * Returns posts created by the authenticated user, with applicants and their
+     * profiles.
+     * ✅ NEW: Each applicant includes "isAvailable" field for UX optimization.
      */
     public List<Map<String, Object>> getMyPosts(String userId) {
         List<Map<String, Object>> result = new ArrayList<>();
@@ -168,6 +228,9 @@ public class BuddyBeaconService {
                         User user = userOpt.get();
                         applicant.put("applicantId", app.getApplicantId());
                         applicant.put("profile", user);
+                        // ✅ NEW: Add isAvailable field (BuddyBeacon doesn't have eventId, so always
+                        // available)
+                        applicant.put("isAvailable", true);
                     }
                 }
                 applicants.add(applicant);
@@ -200,6 +263,9 @@ public class BuddyBeaconService {
                         User user = userOpt.get();
                         applicant.put("applicantId", app.getApplicantId());
                         applicant.put("profile", user);
+                        // ✅ NEW: Check if user is available for this event
+                        boolean available = isUserAvailable(post.getEventId(), app.getApplicantId());
+                        applicant.put("isAvailable", available);
                     }
                 }
                 applicants.add(applicant);
@@ -213,22 +279,23 @@ public class BuddyBeaconService {
     }
 
     /**
-     * Application logic: Only allow if post is ACTIVE (<20h) and applicant is not
-     * the creator.
-     * TESTING: Self-application check is commented out for testing purposes
+     * Application logic: Only allow if post is ACTIVE (<20h), applicant is not the
+     * creator,
+     * and applicant is not already in a team/pod for this event (double booking
+     * prevention).
      */
     @SuppressWarnings("null")
     public Application applyToBeaconPost(String beaconId, String applicantId, Application application) {
         System.out.println("Received beaconId: " + beaconId); // Debugging beaconId
+
         // Try BuddyBeacon first
         Optional<BuddyBeacon> beaconOpt = beaconRepository.findById((String) beaconId);
         if (beaconOpt.isPresent()) {
             BuddyBeacon beacon = beaconOpt.get();
             // ✅ FIX #3: Prevent creator from applying to their own post
-            // TESTING: BYPASSED - Allow self-application for testing
-            // if (beacon.getAuthorId().equals(applicantId)) {
-            // throw new RuntimeException("Cannot apply to your own team post");
-            // }
+            if (beacon.getAuthorId().equals(applicantId)) {
+                throw new RuntimeException("Cannot apply to your own team post");
+            }
             if (beacon.getCreatedAt() != null) {
                 long hours = java.time.Duration.between(beacon.getCreatedAt(), LocalDateTime.now()).toHours();
                 if (hours >= 20)
@@ -240,17 +307,35 @@ public class BuddyBeaconService {
             application.setStatus(Application.Status.PENDING);
             return applicationRepository.save(application);
         }
+
         // Try TeamFindingPost
         Optional<Post> postOpt = postRepository.findById((String) beaconId);
         if (postOpt.isPresent() && postOpt.get() instanceof TeamFindingPost teamPost) {
             // ✅ FIX #3: Prevent creator from applying to their own post
-            // TESTING: BYPASSED - Allow self-application for testing
-            // if (teamPost.getAuthorId().equals(applicantId)) {
-            // throw new RuntimeException("Cannot apply to your own team post");
-            // }
+            if (teamPost.getAuthorId().equals(applicantId)) {
+                throw new RuntimeException("Cannot apply to your own team post");
+            }
             if (teamPost.computePostState() != PostState.ACTIVE) {
                 throw new RuntimeException("Applications are closed for this post");
             }
+
+            // ✅ DOUBLE BOOKING PREVENTION (Part 2: Filter)
+            // Check 1: Self-join prevention - if post is linkedPodId, verify not already in
+            // team
+            if (teamPost.getLinkedPodId() != null) {
+                if (teamPost.getCurrentTeamMembers() != null
+                        && teamPost.getCurrentTeamMembers().contains(applicantId)) {
+                    throw new RuntimeException("You are already a member of this team.");
+                }
+            }
+
+            // Check 2: Duplicate application prevention
+            if (teamPost.getApplicants() != null &&
+                    teamPost.getApplicants().stream().anyMatch(app -> app.containsKey("applicantId") &&
+                            app.get("applicantId").equals(applicantId))) {
+                throw new RuntimeException("You have already applied to this team.");
+            }
+
             application.setBeaconId(beaconId);
             application.setApplicantId(applicantId);
             application.setCreatedAt(LocalDateTime.now());
@@ -286,7 +371,7 @@ public class BuddyBeaconService {
                     // ✅ FEATURE: Create inbox notification for the applicant
                     Inbox inboxMessage = new Inbox();
                     inboxMessage.setUserId(app.getApplicantId());
-                    inboxMessage.setType("APPLICATION_FEEDBACK");
+                    inboxMessage.setType(Inbox.NotificationType.APPLICATION_FEEDBACK);
                     inboxMessage.setTitle("Application Accepted!");
                     inboxMessage.setMessage("Congratulations! You've been accepted to '" + beacon.getTitle() + "'!");
                     inboxMessage.setApplicationId(applicationId);
@@ -311,6 +396,32 @@ public class BuddyBeaconService {
                     Application app = applicationRepository.findById(applicationId).orElseThrow();
                     if (app.getStatus() != Application.Status.PENDING)
                         throw new RuntimeException("Already processed");
+
+                    // ✅ DOUBLE BOOKING PREVENTION (Part 1: The Gatekeeper)
+                    String applicantId = app.getApplicantId();
+                    String eventId = teamPost.getEventId();
+
+                    // Check 1: User already in a POD for this event
+                    boolean inPod = collabPodRepository.existsByEventIdAndMemberIdsContains(eventId, applicantId);
+                    if (inPod) {
+                        throw new IllegalStateException(
+                                "User is already in a team (Pod) for this event. Cannot join another team.");
+                    }
+
+                    // Check 2: User CONFIRMED in any OTHER Post for this event
+                    List<TeamFindingPost> otherPosts = postRepository.findByEventId(eventId);
+                    boolean inOtherPost = otherPosts.stream()
+                            .filter(p -> !p.getId().equals(postId)) // Exclude current post
+                            .anyMatch(p -> {
+                                List<String> members = p.getCurrentTeamMembers();
+                                return members != null && members.contains(applicantId);
+                            });
+
+                    if (inOtherPost) {
+                        throw new IllegalStateException(
+                                "User has already been accepted by another leader for this event. Cannot join multiple teams.");
+                    }
+
                     List<String> members = teamPost.getCurrentTeamMembers();
                     if (members == null)
                         members = new ArrayList<>();
@@ -324,7 +435,7 @@ public class BuddyBeaconService {
                     // ✅ FEATURE: Create inbox notification for the applicant
                     Inbox inboxMessage = new Inbox();
                     inboxMessage.setUserId(app.getApplicantId());
-                    inboxMessage.setType("APPLICATION_FEEDBACK");
+                    inboxMessage.setType(Inbox.NotificationType.APPLICATION_FEEDBACK);
                     inboxMessage.setTitle("Application Accepted!");
                     inboxMessage.setMessage("Congratulations! You've been accepted to '" + teamPost.getTitle() + "'!");
                     inboxMessage.setApplicationId(applicationId);
@@ -365,7 +476,7 @@ public class BuddyBeaconService {
                     // ✅ FEATURE: Create inbox notification for the applicant
                     Inbox inboxMessage = new Inbox();
                     inboxMessage.setUserId(app.getApplicantId());
-                    inboxMessage.setType("APPLICATION_FEEDBACK");
+                    inboxMessage.setType(Inbox.NotificationType.APPLICATION_FEEDBACK);
                     inboxMessage.setTitle("Application Rejected");
                     inboxMessage.setMessage("Your application to '" + beacon.getTitle() + "' has been rejected.");
                     inboxMessage.setApplicationId(applicationId);
@@ -398,7 +509,7 @@ public class BuddyBeaconService {
                     // ✅ FEATURE: Create inbox notification for the applicant
                     Inbox inboxMessage = new Inbox();
                     inboxMessage.setUserId(app.getApplicantId());
-                    inboxMessage.setType("APPLICATION_FEEDBACK");
+                    inboxMessage.setType(Inbox.NotificationType.APPLICATION_FEEDBACK);
                     inboxMessage.setTitle("Application Rejected");
                     inboxMessage.setMessage("Your application to '" + teamPost.getTitle() + "' has been rejected.");
                     inboxMessage.setApplicationId(applicationId);

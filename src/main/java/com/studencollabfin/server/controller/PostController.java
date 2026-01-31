@@ -94,8 +94,31 @@ public class PostController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Object>> getAllPosts(@RequestParam(required = false) String type) {
-        List<Post> posts = postService.getAllPosts();
+    public ResponseEntity<List<Object>> getAllPosts(@RequestParam(required = false) String type,
+            Authentication authentication, HttpServletRequest request) {
+        // ✅ Campus Isolation: Fetch current user and filter posts by college
+        String userId = getCurrentUserId(authentication, request);
+        List<Post> posts = new java.util.ArrayList<>();
+
+        if (userId != null && !userId.trim().isEmpty()) {
+            try {
+                com.studencollabfin.server.model.User currentUser = userService.getUserById(userId);
+                if (currentUser != null && currentUser.getCollegeName() != null) {
+                    posts = postService.getAllPosts(currentUser.getCollegeName());
+                    System.out.println("✅ Filtered posts for college: " + currentUser.getCollegeName());
+                } else {
+                    System.out.println("⚠️ User not found or college is null");
+                    posts = new java.util.ArrayList<>();
+                }
+            } catch (Exception ex) {
+                System.err.println("⚠️ Error fetching user or posts: " + ex.getMessage());
+                posts = new java.util.ArrayList<>();
+            }
+        } else {
+            System.out.println("⚠️ No userId found, returning empty list for campus isolation");
+            posts = new java.util.ArrayList<>();
+        }
+
         // If a type filter was provided, attempt to filter by PostType enum
         if (type != null && !type.isBlank()) {
             try {
@@ -445,9 +468,36 @@ public class PostController {
     }
 
     // Fetch TeamFindingPosts by eventId
+    // ✅ Campus Isolation: Filter team finding posts by current user's college
     @GetMapping("/event/{eventId}")
-    public ResponseEntity<List<Object>> getTeamFindingPostsByEventId(@PathVariable String eventId) {
-        List<TeamFindingPost> posts = postService.getTeamFindingPostsByEventId(eventId);
+    public ResponseEntity<List<Object>> getTeamFindingPostsByEventId(@PathVariable String eventId,
+            Authentication authentication, HttpServletRequest request) {
+        // Get current user's college
+        String userId = getCurrentUserId(authentication, request);
+        String userCollege = null;
+
+        if (userId != null && !userId.trim().isEmpty()) {
+            try {
+                com.studencollabfin.server.model.User currentUser = userService.getUserById(userId);
+                if (currentUser != null && currentUser.getCollegeName() != null) {
+                    userCollege = currentUser.getCollegeName();
+                }
+            } catch (Exception ex) {
+                System.err.println("⚠️ Error fetching current user: " + ex.getMessage());
+            }
+        }
+
+        // Fetch all posts for the event
+        List<TeamFindingPost> allPosts = postService.getTeamFindingPostsByEventId(eventId);
+
+        // ✅ Filter by college (only show posts from same college)
+        final String finalUserCollege = userCollege;
+        List<TeamFindingPost> posts = allPosts.stream()
+                .filter(p -> finalUserCollege != null && finalUserCollege.equals(p.getCollege()))
+                .toList();
+
+        System.out.println("✅ Filtered team posts for college: " + userCollege + ", count: " + posts.size());
+
         List<Object> richPosts = new java.util.ArrayList<>();
         for (TeamFindingPost post : posts) {
             // Fetch author details (simulate, replace with actual user fetch)

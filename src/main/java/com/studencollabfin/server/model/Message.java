@@ -16,8 +16,11 @@ public class Message {
     @Id
     private String id;
 
-    // Message type categorization
-    private String messageType; // CAMPUS_POD or GLOBAL_ROOM
+    // ✅ NEW: Message type categorization with enum
+    private MessageType messageType; // CHAT, SYSTEM (for actions like 'User X was kicked')
+
+    // DEPRECATED (kept for backward compatibility)
+    private String messageTypeString; // CAMPUS_POD or GLOBAL_ROOM
     private String scope; // CAMPUS (for campus pods) or GLOBAL (for inter-college rooms)
 
     // Context identifiers
@@ -47,4 +50,10 @@ public class Message {
     // Metadata
     private Date sentAt;
     private boolean read;
+
+    // ✅ NEW: Enum for message types
+    public enum MessageType {
+        CHAT, // Regular user messages
+        SYSTEM // System-generated messages (user kicked, user joined, etc.)
+    }
 }
