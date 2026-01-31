@@ -79,13 +79,14 @@ public class CollabPodService {
             System.out.println("✅ GLOBAL pod college set to: GLOBAL");
         }
 
+        // ✅ FIX: Initialize memberIds as empty list
+        // The creator is the owner, NOT a regular member
+        // Schema Rule: User exists in only ONE role list (ownerId OR adminIds OR
+        // memberIds)
         if (pod.getMemberIds() == null) {
             pod.setMemberIds(new java.util.ArrayList<>());
         }
-        // Ensure creator ID is added exactly once (prevent duplicates)
-        if (!pod.getMemberIds().contains(creatorId)) {
-            pod.getMemberIds().add(creatorId);
-        }
+        // DO NOT add creator to memberIds - they are the owner!
 
         if (pod.getModeratorIds() == null) {
             pod.setModeratorIds(new java.util.ArrayList<>());
@@ -144,7 +145,49 @@ public class CollabPodService {
 
     public List<Message> getMessagesForPod(String podId) {
         // The podId is used as the conversationId for messages
-        return messageRepository.findByConversationIdOrderBySentAtAsc(podId);
+        // ✅ DEFENSIVE: Handle null senders and system messages gracefully
+        List<Message> messages = messageRepository.findByConversationIdOrderBySentAtAsc(podId);
+
+        // Process messages with error handling
+        List<Message> processedMessages = new java.util.ArrayList<>();
+        for (Message msg : messages) {
+            try {
+                // Skip null messages
+                if (msg == null) {
+                    System.err.println("⚠️ Null message found in pod " + podId);
+                    continue;
+                }
+
+                // Handle system messages - they don't need sender details
+                if (msg.getMessageType() == Message.MessageType.SYSTEM) {
+                    // System messages are complete as-is, no need to fetch sender
+                    processedMessages.add(msg);
+                    continue;
+                }
+
+                // For regular chat messages, ensure sender info is populated
+                if (msg.getSenderId() != null && !msg.getSenderId().isEmpty()) {
+                    // If sender name is missing, it's okay - frontend can handle it
+                    // Don't crash trying to fetch sender profile
+                    if (msg.getSenderName() == null || msg.getSenderName().isEmpty()) {
+                        msg.setSenderName("User"); // Default placeholder
+                    }
+                    processedMessages.add(msg);
+                } else {
+                    // Message has no senderId - log warning but skip it
+                    System.err.println("⚠️ Message " + msg.getId() + " has no senderId, skipping");
+                    continue;
+                }
+            } catch (Exception e) {
+                // If any message fails to process, log error and skip it
+                // Don't crash the entire message list
+                System.err.println("❌ Error processing message " + msg.getId() + ": " + e.getMessage());
+                e.printStackTrace();
+                continue;
+            }
+        }
+
+        return processedMessages;
     }
 
     public Message saveMessage(Message message) {
@@ -513,7 +556,7 @@ public class CollabPodService {
             String userName = getUserName(userId);
             String adminDesignation = wasAdmin ? " (Admin)" : "";
             String systemMessageText = userName + adminDesignation + " left the pod.";
-            
+
             Message systemMsg = new Message();
             systemMsg.setMessageType(Message.MessageType.SYSTEM);
             systemMsg.setPodId(podId);
@@ -614,10 +657,10 @@ public class CollabPodService {
             notification.setTitle("You are now the owner of " + pod.getName());
             notification.setMessage(
                     currentOwnerName + " transferred ownership to you. You can now manage members and delete the pod.");
-            notification.setSeverity("info");
+            notification.setSeverity(Inbox.NotificationSeverity.HIGH);
             notification.setPodId(podId);
             notification.setPodName(pod.getName());
-            notification.setTimestamp(new Date());
+            notification.setTimestamp(LocalDateTime.now());
             notification.setRead(false);
 
             Inbox savedNotif = inboxRepository.save(notification);

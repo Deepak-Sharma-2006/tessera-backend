@@ -293,10 +293,9 @@ public class BuddyBeaconService {
         if (beaconOpt.isPresent()) {
             BuddyBeacon beacon = beaconOpt.get();
             // ✅ FIX #3: Prevent creator from applying to their own post
-            // TESTING: BYPASSED - Allow self-application for testing
-            // if (beacon.getAuthorId().equals(applicantId)) {
-            // throw new RuntimeException("Cannot apply to your own team post");
-            // }
+            if (beacon.getAuthorId().equals(applicantId)) {
+                throw new RuntimeException("Cannot apply to your own team post");
+            }
             if (beacon.getCreatedAt() != null) {
                 long hours = java.time.Duration.between(beacon.getCreatedAt(), LocalDateTime.now()).toHours();
                 if (hours >= 20)
@@ -313,10 +312,9 @@ public class BuddyBeaconService {
         Optional<Post> postOpt = postRepository.findById((String) beaconId);
         if (postOpt.isPresent() && postOpt.get() instanceof TeamFindingPost teamPost) {
             // ✅ FIX #3: Prevent creator from applying to their own post
-            // TESTING: BYPASSED - Allow self-application for testing
-            // if (teamPost.getAuthorId().equals(applicantId)) {
-            // throw new RuntimeException("Cannot apply to your own team post");
-            // }
+            if (teamPost.getAuthorId().equals(applicantId)) {
+                throw new RuntimeException("Cannot apply to your own team post");
+            }
             if (teamPost.computePostState() != PostState.ACTIVE) {
                 throw new RuntimeException("Applications are closed for this post");
             }
