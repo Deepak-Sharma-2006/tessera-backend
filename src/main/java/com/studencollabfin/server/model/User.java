@@ -1,11 +1,13 @@
 package com.studencollabfin.server.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.ArrayList;
 
@@ -45,4 +47,11 @@ public class User {
     private String githubUrl;
     private String portfolioUrl;
     private boolean profileCompleted = false;
+
+    // Date fields - stored as LocalDateTime and serialized as ISO-8601
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime createdAt; // When the account was created
+    
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime joinedDate; // Alias for createdAt for profile display
 }

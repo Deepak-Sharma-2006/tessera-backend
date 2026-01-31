@@ -41,12 +41,15 @@ public class AuthenticationController {
             cookie.setSecure(false);
             response.addCookie(cookie);
 
+            // ✅ CRITICAL FIX: Include collegeName and badges in auth response
             return ResponseEntity.ok(new AuthenticationResponse(
                     jwt,
                     user.getId(),
                     user.getEmail(),
                     user.getFullName(),
-                    user.isProfileCompleted()));
+                    user.isProfileCompleted(),
+                    user.getCollegeName(),
+                    user.getBadges()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

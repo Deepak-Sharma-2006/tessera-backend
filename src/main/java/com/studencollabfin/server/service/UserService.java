@@ -195,10 +195,21 @@ public class UserService implements UserDetailsService {
                         newUser.setFullName(name);
                         newUser.setProfilePicUrl(pictureUrl);
                         newUser.setEmail(email);
+
+                        // ✅ CRITICAL FIX: Extract and set collegeName from email domain
+                        String collegeName = deriveCollegeFromEmail(email);
+                        newUser.setCollegeName(collegeName);
+
                         newUser.setLevel(1);
                         newUser.setXp(0);
                         newUser.setTotalXP(100);
                         newUser.setProfileCompleted(false);
+
+                        // Set creation timestamps
+                        LocalDateTime now = LocalDateTime.now();
+                        newUser.setCreatedAt(now);
+                        newUser.setJoinedDate(now);
+
                         return userRepository.save(newUser);
                     }
                 });
@@ -218,12 +229,57 @@ public class UserService implements UserDetailsService {
         User newUser = new User();
         newUser.setEmail(email);
         newUser.setPassword(passwordEncoder.encode(password));
+
+        // ✅ CRITICAL FIX: Extract and set collegeName from email domain
+        String collegeName = deriveCollegeFromEmail(email);
+        newUser.setCollegeName(collegeName);
+
         newUser.setLevel(1);
         newUser.setXp(0);
         newUser.setTotalXP(100);
         newUser.setProfileCompleted(false);
 
+        // Set creation timestamps
+        LocalDateTime now = LocalDateTime.now();
+        newUser.setCreatedAt(now);
+        newUser.setJoinedDate(now);
+
         return userRepository.save(newUser);
+    }
+
+    /**
+     * ✅ HELPER: Derive college name from email domain
+     * Maps known domains to college names
+     */
+    private String deriveCollegeFromEmail(String email) {
+        if (email == null || !email.contains("@")) {
+            return "Unknown College";
+        }
+
+        String domain = email.toLowerCase().substring(email.lastIndexOf("@") + 1);
+
+        // College mappings based on email domain
+        if (domain.contains("sinhgad")) {
+            return "Sinhgad College of Engineering";
+        } else if (domain.contains("iit")) {
+            return "IIT";
+        } else if (domain.contains("mit")) {
+            return "MIT";
+        } else if (domain.contains("stanford")) {
+            return "Stanford";
+        } else if (domain.contains("symbiosis")) {
+            return "SYMBIOSIS";
+        } else if (domain.contains("manipal")) {
+            return "Manipal";
+        } else if (domain.contains("vit")) {
+            return "VIT";
+        } else if (domain.contains("bits")) {
+            return "BITS Pilani";
+        }
+
+        // Default: Use domain name as college name
+        String domainPrefix = domain.split("\\.")[0].toUpperCase();
+        return domainPrefix.isEmpty() ? "Unknown College" : domainPrefix;
     }
 
 }
