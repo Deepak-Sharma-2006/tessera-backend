@@ -476,6 +476,8 @@ public class CollabPodService {
             systemMsg.setPodId(podId);
             systemMsg.setConversationId(podId);
             systemMsg.setText("Admin " + actorName + " kicked " + targetName + reasonText);
+            systemMsg.setSenderId("SYSTEM");
+            systemMsg.setSenderName("SYSTEM");
             systemMsg.setSentAt(new Date());
             systemMsg.setRead(false);
             systemMsg.setScope("CAMPUS");
@@ -607,6 +609,8 @@ public class CollabPodService {
             systemMsg.setPodId(podId);
             systemMsg.setConversationId(podId);
             systemMsg.setText(systemMessageText);
+            systemMsg.setSenderId("SYSTEM");
+            systemMsg.setSenderName("SYSTEM");
             systemMsg.setSentAt(new Date());
             systemMsg.setRead(false);
             systemMsg.setScope(pod.getScope() != null ? pod.getScope().toString() : "CAMPUS");
@@ -683,6 +687,8 @@ public class CollabPodService {
             systemMsg.setPodId(podId);
             systemMsg.setConversationId(podId);
             systemMsg.setText("Ownership transferred from " + currentOwnerName + " to " + newOwnerName + ".");
+            systemMsg.setSenderId("SYSTEM");
+            systemMsg.setSenderName("SYSTEM");
             systemMsg.setSentAt(new Date());
             systemMsg.setRead(false);
             systemMsg.setScope(pod.getScope() != null ? pod.getScope().toString() : "CAMPUS");
@@ -833,6 +839,8 @@ public class CollabPodService {
             systemMsg.setPodId(podId);
             systemMsg.setConversationId(podId);
             systemMsg.setText(userName + " joined the pod.");
+            systemMsg.setSenderName("SYSTEM"); // ✅ Set system sender name
+            systemMsg.setSenderId("SYSTEM"); // ✅ Set system sender ID
             systemMsg.setSentAt(new Date());
             systemMsg.setRead(false);
             systemMsg.setScope("CAMPUS");
