@@ -352,6 +352,40 @@ public class CollabPodController {
     }
 
     /**
+     * Transfer ownership of a pod to another member/admin
+     * 
+     * Prevents headless groups by requiring ownership transfer before owner leaves
+     */
+    @PostMapping("/{id}/transfer-ownership")
+    public ResponseEntity<?> transferOwnership(@PathVariable String id,
+            @RequestBody java.util.Map<String, String> payload) {
+        try {
+            String currentOwnerId = payload.get("currentOwnerId");
+            String newOwnerId = payload.get("newOwnerId");
+
+            if (currentOwnerId == null || currentOwnerId.isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "currentOwnerId is required"));
+            }
+            if (newOwnerId == null || newOwnerId.isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "newOwnerId is required"));
+            }
+
+            CollabPod updatedPod = collabPodService.transferOwnership(id, currentOwnerId, newOwnerId);
+            return ResponseEntity.ok(updatedPod);
+
+        } catch (com.studencollabfin.server.exception.PermissionDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
      * ✅ STAGE 3: Enhanced join endpoint that checks cooldown and ban
      * 
      * Replaces the old simple join endpoint

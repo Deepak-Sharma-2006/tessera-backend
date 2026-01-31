@@ -517,6 +517,103 @@ public class CollabPodService {
     }
 
     /**
+     * Transfer ownership of a pod to another user.
+     * 
+     * Prevents headless groups by requiring ownership transfer before owner can leave.
+     * 
+     * Steps:
+     * 1. Verify currentOwnerId is the pod owner
+     * 2. Verify newOwnerId is a current member/admin
+     * 3. Transfer ownership (set ownerId, adjust role lists)
+     * 4. Create SYSTEM message about transfer
+     * 5. Create Inbox notification for new owner
+     * 
+     * @param podId          The pod ID
+     * @param currentOwnerId Current owner's ID (must match pod.ownerId)
+     * @param newOwnerId     New owner's ID (must be member or admin)
+     * @return Updated CollabPod with new owner
+     * @throws RuntimeException if validation fails
+     */
+    @Transactional
+    public CollabPod transferOwnership(String podId, String currentOwnerId, String newOwnerId) {
+        System.out.println("🔄 TRANSFER: Pod " + podId + " ownership from " + currentOwnerId + " to " + newOwnerId);
+
+        // Step 1: Fetch pod and verify current owner
+        CollabPod pod = collabPodRepository.findById(podId)
+                .orElseThrow(() -> new RuntimeException("CollabPod not found: " + podId));
+
+        if (!pod.getOwnerId().equals(currentOwnerId)) {
+            throw new PermissionDeniedException("Only the current owner can transfer ownership");
+        }
+
+        // Step 2: Verify new owner is a member or admin
+        if (!pod.getMemberIds().contains(newOwnerId) && !pod.getAdminIds().contains(newOwnerId)) {
+            throw new RuntimeException("New owner must be a current member or admin of the pod");
+        }
+
+        // Step 3: Get user names for messages
+        String currentOwnerName = getUserName(currentOwnerId);
+        String newOwnerName = getUserName(newOwnerId);
+
+        // Step 4: Update ownership and role lists
+        // Remove new owner from admin/member lists
+        pod.getAdminIds().remove(newOwnerId);
+        pod.getMemberIds().remove(newOwnerId);
+
+        // Add current owner to members (demote to member)
+        if (!pod.getMemberIds().contains(currentOwnerId)) {
+            pod.getMemberIds().add(currentOwnerId);
+        }
+
+        // Set new owner
+        pod.setOwnerId(newOwnerId);
+        pod.setLastActive(LocalDateTime.now());
+
+        CollabPod updatedPod = collabPodRepository.save(pod);
+        System.out.println("  ✓ Ownership transferred to " + newOwnerId);
+
+        // Step 5: Create SYSTEM message
+        try {
+            Message systemMsg = new Message();
+            systemMsg.setMessageType(Message.MessageType.SYSTEM);
+            systemMsg.setPodId(podId);
+            systemMsg.setConversationId(podId);
+            systemMsg.setText("Ownership transferred from " + currentOwnerName + " to " + newOwnerName + ".");
+            systemMsg.setSentAt(new Date());
+            systemMsg.setRead(false);
+            systemMsg.setScope(pod.getScope() != null ? pod.getScope().toString() : "CAMPUS");
+
+            Message savedMsg = messageRepository.save(systemMsg);
+            System.out.println("  ✓ System message logged: " + savedMsg.getId());
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to log system message: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        // Step 6: Create Inbox notification for new owner
+        try {
+            Inbox notification = new Inbox();
+            notification.setUserId(newOwnerId);
+            notification.setType(Inbox.NotificationType.POD_EVENT);
+            notification.setTitle("You are now the owner of " + pod.getName());
+            notification.setMessage(currentOwnerName + " transferred ownership to you. You can now manage members and delete the pod.");
+            notification.setSeverity("info");
+            notification.setPodId(podId);
+            notification.setPodName(pod.getName());
+            notification.setTimestamp(new Date());
+            notification.setRead(false);
+
+            Inbox savedNotif = inboxRepository.save(notification);
+            System.out.println("  ✓ Inbox notification created for new owner: " + savedNotif.getId());
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to create notification: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return updatedPod;
+    }
+
+    /**
      * User joins a pod with cooldown and ban checks.
      * 
      * Checks:
