@@ -470,12 +470,14 @@ public class CollabPodService {
             String actorName = getUserName(actorId);
             String targetName = getUserName(targetId);
             String reasonText = (reason != null && !reason.isEmpty()) ? " - " + reason : "";
+            // ✅ Use actual actor role, not hardcoded "Admin"
+            String actorRoleLabel = actorRole.substring(0, 1).toUpperCase() + actorRole.substring(1).toLowerCase();
 
             Message systemMsg = new Message();
             systemMsg.setMessageType(Message.MessageType.SYSTEM);
             systemMsg.setPodId(podId);
             systemMsg.setConversationId(podId);
-            systemMsg.setText("Admin " + actorName + " kicked " + targetName + reasonText);
+            systemMsg.setText(actorRoleLabel + " " + actorName + " kicked " + targetName + reasonText);
             systemMsg.setSenderId("SYSTEM");
             systemMsg.setSenderName("SYSTEM");
             systemMsg.setSentAt(new Date());
@@ -664,18 +666,41 @@ public class CollabPodService {
         String newOwnerName = getUserName(newOwnerId);
 
         // Step 4: Update ownership and role lists
-        // Remove new owner from admin/member lists
-        pod.getAdminIds().remove(newOwnerId);
-        pod.getMemberIds().remove(newOwnerId);
-
-        // Add current owner to members (demote to member)
-        if (!pod.getMemberIds().contains(currentOwnerId)) {
-            pod.getMemberIds().add(currentOwnerId);
+        // Remove new owner from admin/member lists AND their corresponding names
+        int adminIndex = -1;
+        if (pod.getAdminIds() != null && pod.getAdminIds().contains(newOwnerId)) {
+            adminIndex = pod.getAdminIds().indexOf(newOwnerId);
+            pod.getAdminIds().remove(newOwnerId);
+            // Also remove from adminNames at same index
+            if (adminIndex >= 0 && pod.getAdminNames() != null && adminIndex < pod.getAdminNames().size()) {
+                pod.getAdminNames().remove(adminIndex);
+                System.out.println("✅ Removed " + newOwnerId + " from adminIds and adminNames at index " + adminIndex);
+            }
         }
 
-        // Set new owner
+        int memberIndex = -1;
+        if (pod.getMemberIds() != null && pod.getMemberIds().contains(newOwnerId)) {
+            memberIndex = pod.getMemberIds().indexOf(newOwnerId);
+            pod.getMemberIds().remove(newOwnerId);
+            // Also remove from memberNames at same index
+            if (memberIndex >= 0 && pod.getMemberNames() != null && memberIndex < pod.getMemberNames().size()) {
+                pod.getMemberNames().remove(memberIndex);
+                System.out.println("✅ Removed " + newOwnerId + " from memberIds and memberNames at index " + memberIndex);
+            }
+        }
+
+        // Add current owner to members (demote to member) with their name
+        if (!pod.getMemberIds().contains(currentOwnerId)) {
+            pod.getMemberIds().add(currentOwnerId);
+            pod.getMemberNames().add(currentOwnerName);
+            System.out.println("✅ Added " + currentOwnerId + " (" + currentOwnerName + ") to memberIds");
+        }
+
+        // Set new owner and their name
         pod.setOwnerId(newOwnerId);
+        pod.setOwnerName(newOwnerName);
         pod.setLastActive(LocalDateTime.now());
+        System.out.println("✅ Pod owner set to " + newOwnerId + " (" + newOwnerName + ")");
 
         CollabPod updatedPod = collabPodRepository.save(pod);
         System.out.println("  ✓ Ownership transferred to " + newOwnerId);
