@@ -462,22 +462,34 @@ public class CollabPodService {
             throw new RuntimeException("Pod owner cannot leave. Transfer ownership or close the pod.");
         }
 
-        // Step 3: Remove user from memberIds and adminIds
-        pod.getMemberIds().remove(userId);
-        pod.getAdminIds().remove(userId);
+        // Step 3: Check if user is an admin before removal
+        boolean wasAdmin = pod.getAdminIds() != null && pod.getAdminIds().contains(userId);
+        System.out.println("  ℹ️ User was admin: " + wasAdmin);
+
+        // Step 4: Remove user from BOTH memberIds AND adminIds arrays
+        // Safe removal - if not in list, remove() just returns false without error
+        if (pod.getMemberIds() != null) {
+            pod.getMemberIds().remove(userId);
+        }
+        if (pod.getAdminIds() != null) {
+            pod.getAdminIds().remove(userId);
+        }
         pod.setLastActive(LocalDateTime.now());
 
-        // Step 4: Update pod status if needed
+        System.out.println("  ✓ User removed from memberIds and adminIds (if present)");
+
+        // Step 5: Update pod status if needed
         if (pod.getStatus() == CollabPod.PodStatus.FULL &&
+                pod.getMemberIds() != null &&
                 pod.getMemberIds().size() < pod.getMaxCapacity()) {
             pod.setStatus(CollabPod.PodStatus.ACTIVE);
             System.out.println("  ✓ Pod status changed from FULL to ACTIVE");
         }
 
         CollabPod updatedPod = collabPodRepository.save(pod);
-        System.out.println("  ✓ User " + userId + " removed from memberIds");
+        System.out.println("  ✓ Pod saved with user removed");
 
-        // Step 5: Create cooldown record (15 minutes)
+        // Step 6: Create cooldown record (15 minutes)
         try {
             LocalDateTime now = LocalDateTime.now();
             LocalDateTime expiryDate = now.plusMinutes(15);
@@ -496,20 +508,23 @@ public class CollabPodService {
             e.printStackTrace();
         }
 
-        // Step 6: Log SYSTEM message
+        // Step 7: Log SYSTEM message with admin designation if applicable
         try {
             String userName = getUserName(userId);
+            String adminDesignation = wasAdmin ? " (Admin)" : "";
+            String systemMessageText = userName + adminDesignation + " left the pod.";
+            
             Message systemMsg = new Message();
             systemMsg.setMessageType(Message.MessageType.SYSTEM);
             systemMsg.setPodId(podId);
             systemMsg.setConversationId(podId);
-            systemMsg.setText(userName + " left the pod.");
+            systemMsg.setText(systemMessageText);
             systemMsg.setSentAt(new Date());
             systemMsg.setRead(false);
-            systemMsg.setScope("CAMPUS");
+            systemMsg.setScope(pod.getScope() != null ? pod.getScope().toString() : "CAMPUS");
 
             Message savedMsg = messageRepository.save(systemMsg);
-            System.out.println("  ✓ System message logged: " + savedMsg.getId());
+            System.out.println("  ✓ System message logged: " + savedMsg.getId() + " (" + systemMessageText + ")");
         } catch (Exception e) {
             System.err.println("⚠️ Failed to log system message: " + e.getMessage());
             e.printStackTrace();
@@ -519,7 +534,8 @@ public class CollabPodService {
     /**
      * Transfer ownership of a pod to another user.
      * 
-     * Prevents headless groups by requiring ownership transfer before owner can leave.
+     * Prevents headless groups by requiring ownership transfer before owner can
+     * leave.
      * 
      * Steps:
      * 1. Verify currentOwnerId is the pod owner
@@ -596,7 +612,8 @@ public class CollabPodService {
             notification.setUserId(newOwnerId);
             notification.setType(Inbox.NotificationType.POD_EVENT);
             notification.setTitle("You are now the owner of " + pod.getName());
-            notification.setMessage(currentOwnerName + " transferred ownership to you. You can now manage members and delete the pod.");
+            notification.setMessage(
+                    currentOwnerName + " transferred ownership to you. You can now manage members and delete the pod.");
             notification.setSeverity("info");
             notification.setPodId(podId);
             notification.setPodName(pod.getName());
