@@ -178,7 +178,7 @@ public class InboxController {
         try {
             // Convert string to enum
             Inbox.NotificationType notificationType = Inbox.NotificationType.valueOf(type);
-            
+
             // Find all items of this type for the user
             List<Inbox> items = inboxRepository.findByUserIdAndType(userId, notificationType);
 

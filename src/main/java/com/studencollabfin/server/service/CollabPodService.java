@@ -61,6 +61,7 @@ public class CollabPodService {
         var user = userOpt.orElseThrow(() -> new RuntimeException("User not found"));
 
         pod.setCreatorId(creatorId);
+        pod.setOwnerId(creatorId);
         pod.setCreatedAt(LocalDateTime.now());
         pod.setLastActive(LocalDateTime.now());
         pod.setStatus(CollabPod.PodStatus.ACTIVE);
