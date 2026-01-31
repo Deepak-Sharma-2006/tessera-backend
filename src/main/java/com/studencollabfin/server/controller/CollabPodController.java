@@ -6,6 +6,9 @@ import com.studencollabfin.server.model.PodScope;
 import com.studencollabfin.server.repository.CollabPodRepository;
 import com.studencollabfin.server.service.CollabPodService;
 import com.studencollabfin.server.service.UserService;
+import com.studencollabfin.server.exception.PermissionDeniedException;
+import com.studencollabfin.server.exception.CooldownException;
+import com.studencollabfin.server.exception.BannedFromPodException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +24,7 @@ import org.springframework.security.core.Authentication;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/pods")
@@ -273,6 +277,115 @@ public class CollabPodController {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(java.util.Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * ✅ STAGE 3: Kick a member from a pod with hierarchy enforcement
+     * POST /pods/{id}/kick
+     * 
+     * Request body:
+     * {
+     *   "actorId": "user123",        // User performing the kick
+     *   "targetId": "user456",       // User being kicked
+     *   "reason": "Spam"             // Reason: Spam, Harassment, Other
+     * }
+     * 
+     * Response: Updated CollabPod or error
+     */
+    @PostMapping("/{id}/kick")
+    public ResponseEntity<?> kickMember(@PathVariable String id,
+            @RequestBody java.util.Map<String, String> payload) {
+        try {
+            String actorId = payload.get("actorId");
+            String targetId = payload.get("targetId");
+            String reason = payload.get("reason");
+
+            if (actorId == null || targetId == null || reason == null) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "actorId, targetId, and reason are required"));
+            }
+
+            CollabPod updatedPod = collabPodService.kickMember(id, actorId, targetId, reason);
+            return ResponseEntity.ok(updatedPod);
+
+        } catch (PermissionDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * ✅ STAGE 3: Leave a pod (creates 15-minute cooldown)
+     * POST /pods/{id}/leave
+     * 
+     * Request body:
+     * {
+     *   "userId": "user123"
+     * }
+     * 
+     * Response: Success message or error
+     */
+    @PostMapping("/{id}/leave")
+    public ResponseEntity<?> leavePod(@PathVariable String id,
+            @RequestBody java.util.Map<String, String> payload) {
+        try {
+            String userId = payload.get("userId");
+
+            if (userId == null || userId.isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "userId is required"));
+            }
+
+            collabPodService.leavePod(id, userId);
+            return ResponseEntity.ok(Map.of("message", "Successfully left the pod"));
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * ✅ STAGE 3: Enhanced join endpoint that checks cooldown and ban
+     * 
+     * Replaces the old simple join endpoint
+     * Now validates:
+     * - User is not banned
+     * - User doesn't have active cooldown
+     * - Pod is not full
+     */
+    @PostMapping("/{id}/join-enhanced")
+    public ResponseEntity<?> joinPodEnhanced(@PathVariable String id,
+            @RequestBody java.util.Map<String, String> payload) {
+        try {
+            String userId = payload.get("userId");
+
+            if (userId == null || userId.isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "userId is required"));
+            }
+
+            CollabPod updatedPod = collabPodService.joinPod(id, userId);
+            return ResponseEntity.ok(updatedPod);
+
+        } catch (BannedFromPodException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (CooldownException e) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body(Map.of(
+                            "error", e.getMessage(),
+                            "minutesRemaining", e.getMinutesRemaining()));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 

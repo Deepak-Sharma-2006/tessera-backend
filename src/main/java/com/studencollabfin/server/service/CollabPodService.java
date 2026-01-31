@@ -300,10 +300,10 @@ public class CollabPodService {
      * - Admin can kick Members only
      * - Members cannot kick anyone
      * 
-     * @param podId        The pod ID
-     * @param actorId      The user performing the action (kicker)
-     * @param targetId     The user to be kicked
-     * @param reason       Reason for kicking (optional, for audit trail)
+     * @param podId    The pod ID
+     * @param actorId  The user performing the action (kicker)
+     * @param targetId The user to be kicked
+     * @param reason   Reason for kicking (optional, for audit trail)
      * @return Updated CollabPod
      * @throws PermissionDeniedException if hierarchy is violated
      */
@@ -360,7 +360,7 @@ public class CollabPodService {
         System.out.println("  ✓ Hierarchy check passed: " + actorRole + " can kick " + targetRole);
         pod.getMemberIds().remove(targetId);
         pod.getAdminIds().remove(targetId);
-        
+
         if (pod.getBannedIds() == null) {
             pod.setBannedIds(new java.util.ArrayList<>());
         }
@@ -377,7 +377,7 @@ public class CollabPodService {
             String actorName = getUserName(actorId);
             String targetName = getUserName(targetId);
             String reasonText = (reason != null && !reason.isEmpty()) ? " - " + reason : "";
-            
+
             Message systemMsg = new Message();
             systemMsg.setMessageType(Message.MessageType.SYSTEM);
             systemMsg.setPodId(podId);
@@ -386,7 +386,7 @@ public class CollabPodService {
             systemMsg.setSentAt(new Date());
             systemMsg.setRead(false);
             systemMsg.setScope("CAMPUS");
-            
+
             Message savedMsg = messageRepository.save(systemMsg);
             System.out.println("  ✓ System message logged: " + savedMsg.getId());
         } catch (Exception e) {
@@ -405,8 +405,8 @@ public class CollabPodService {
      * - Create PodCooldown record (auto-expires in 15 minutes via TTL)
      * - Log SYSTEM message to audit trail
      * 
-     * @param podId   The pod ID
-     * @param userId  The user leaving the pod
+     * @param podId  The pod ID
+     * @param userId The user leaving the pod
      * @throws RuntimeException if pod not found or user is owner
      */
     public void leavePod(String podId, String userId) {
@@ -483,12 +483,12 @@ public class CollabPodService {
      * - Not banned from the pod
      * - Pod not full
      * 
-     * @param podId   The pod ID
-     * @param userId  The user joining
+     * @param podId  The pod ID
+     * @param userId The user joining
      * @return Updated CollabPod
-     * @throws CooldownException if user is on cooldown
+     * @throws CooldownException      if user is on cooldown
      * @throws BannedFromPodException if user is banned
-     * @throws RuntimeException if pod is full or not found
+     * @throws RuntimeException       if pod is full or not found
      */
     public CollabPod joinPod(String podId, String userId) {
         System.out.println("✋ JOIN: User " + userId + " attempting to join pod " + podId);
@@ -547,7 +547,8 @@ public class CollabPodService {
         pod.setLastActive(LocalDateTime.now());
 
         CollabPod updatedPod = collabPodRepository.save(pod);
-        System.out.println("  ✓ User " + userId + " added to memberIds (total members: " + pod.getMemberIds().size() + ")");
+        System.out.println(
+                "  ✓ User " + userId + " added to memberIds (total members: " + pod.getMemberIds().size() + ")");
 
         // Step 7: Log SYSTEM message
         try {
