@@ -27,4 +27,17 @@ public interface CollabPodRepository extends MongoRepository<CollabPod, String> 
     List<CollabPod> findByLinkedPostId(String linkedPostId);
 
     List<CollabPod> findByMemberIdsContainsAndScope(String memberId, PodScope scope);
+
+    // Campus isolation: Find pods by scope and college
+    List<CollabPod> findByScopeAndCollege(PodScope scope, String college);
+
+    // Find all pods of a specific college
+    List<CollabPod> findByCollege(String college);
+
+    // ✅ NEW: Find pods by eventId and type (for Buddy Beacon stats)
+    List<CollabPod> findByEventIdAndType(String eventId, CollabPod.PodType type);
+
+    // ✅ NEW: Check if user is already a member of a pod for this event (double
+    // booking prevention)
+    boolean existsByEventIdAndMemberIdsContains(String eventId, String userId);
 }

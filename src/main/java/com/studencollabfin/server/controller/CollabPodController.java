@@ -5,6 +5,7 @@ import com.studencollabfin.server.model.Message;
 import com.studencollabfin.server.model.PodScope;
 import com.studencollabfin.server.repository.CollabPodRepository;
 import com.studencollabfin.server.service.CollabPodService;
+import com.studencollabfin.server.service.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.List;
 
@@ -26,10 +29,13 @@ public class CollabPodController {
 
     private final CollabPodRepository collabPodRepository;
     private final CollabPodService collabPodService;
+    private final UserService userService;
 
-    public CollabPodController(CollabPodRepository collabPodRepository, CollabPodService collabPodService) {
+    public CollabPodController(CollabPodRepository collabPodRepository, CollabPodService collabPodService,
+            UserService userService) {
         this.collabPodRepository = collabPodRepository;
         this.collabPodService = collabPodService;
+        this.userService = userService;
     }
 
     /**
@@ -84,22 +90,48 @@ public class CollabPodController {
     }
 
     /**
-     * Strict endpoint for CAMPUS scope only, filtered by LOOKING_FOR type.
-     * Returns only pods with scope=CAMPUS and type=LOOKING_FOR.
-     * Used by CollabPodsPage "Looking For" tab to show only "Looking For" posts,
-     * excluding "Team Finding" pods created from Buddy Beacon.
+     * Strict endpoint for CAMPUS scope only, filtered by current user's college.
+     * ✅ Campus Isolation: Returns only CAMPUS pods from the user's college.
+     * Returns only pods with scope=CAMPUS, type=LOOKING_FOR, and college matching
+     * user's college.
+     * Used by CollabPodsPage "Looking For" tab.
      */
     @GetMapping("/campus")
-    public ResponseEntity<List<CollabPod>> getCampusPods() {
+    public ResponseEntity<List<CollabPod>> getCampusPods(Authentication authentication,
+            HttpServletRequest request) {
         try {
-            List<CollabPod> allCampusPods = collabPodRepository.findByScope(PodScope.CAMPUS);
+            // Get current user's college
+            String userId = getCurrentUserId(authentication, request);
+            String userCollege = null;
+
+            if (userId != null && !userId.trim().isEmpty()) {
+                try {
+                    com.studencollabfin.server.model.User currentUser = userService.getUserById(userId);
+                    if (currentUser != null && currentUser.getCollegeName() != null) {
+                        userCollege = currentUser.getCollegeName();
+                    }
+                } catch (Exception ex) {
+                    System.err.println("⚠️ Error fetching current user: " + ex.getMessage());
+                }
+            }
+
+            if (userCollege == null || userCollege.trim().isEmpty()) {
+                System.out.println("⚠️ User college is null/empty, returning empty campus pods list");
+                return ResponseEntity.ok(new java.util.ArrayList<>());
+            }
+
+            // ✅ Campus Isolation: Filter by CAMPUS scope AND user's college
+            List<CollabPod> campusPods = collabPodRepository.findByScopeAndCollege(PodScope.CAMPUS, userCollege);
 
             // Filter for only LOOKING_FOR type pods
-            java.util.List<CollabPod> lookingForPods = (allCampusPods != null ? allCampusPods
+            java.util.List<CollabPod> lookingForPods = (campusPods != null ? campusPods
                     : new java.util.ArrayList<CollabPod>())
                     .stream()
                     .filter(pod -> pod.getType() != null && pod.getType() == CollabPod.PodType.LOOKING_FOR)
                     .toList();
+
+            System.out.println("✅ Campus pods filtered for college: " + userCollege + ", count: "
+                    + lookingForPods.size());
 
             return ResponseEntity.ok(lookingForPods);
         } catch (Exception e) {
@@ -281,5 +313,24 @@ public class CollabPodController {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
+
+    // Helper method to extract current user ID
+    private String getCurrentUserId(Authentication authentication, HttpServletRequest request) {
+        if (authentication != null && authentication.getPrincipal() != null) {
+            Object principal = authentication.getPrincipal();
+            if (principal instanceof org.springframework.security.core.userdetails.UserDetails) {
+                return ((org.springframework.security.core.userdetails.UserDetails) principal).getUsername();
+            }
+            return principal.toString();
+        }
+
+        // Fall back to X-User-Id header
+        String userId = request.getHeader("X-User-Id");
+        if (userId != null && !userId.trim().isEmpty()) {
+            return userId;
+        }
+
+        return null;
     }
 }

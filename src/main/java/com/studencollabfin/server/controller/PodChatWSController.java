@@ -31,7 +31,7 @@ public class PodChatWSController {
             // Ensure pod context is properly set
             message.setPodId(podId);
             message.setConversationId(podId);
-            message.setMessageType("CAMPUS_POD");
+            message.setMessageType(Message.MessageType.CHAT);
             message.setScope("CAMPUS");
 
             // CRITICAL: Save message to database BEFORE broadcasting

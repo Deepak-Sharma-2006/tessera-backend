@@ -17,14 +17,27 @@ public class CollabPod {
     private String id;
     private String name;
     private String description;
+    
+    // ✅ NEW: Role-based system (replaces simple memberIds + moderatorIds)
+    private String ownerId; // Immutable - the creator of the pod
+    private List<String> adminIds; // Admins with moderation rights
+    private List<String> memberIds; // Regular members
+    private List<String> bannedIds; // Banned users (permanently removed)
+    
+    // DEPRECATED (kept for backward compatibility - use role-based fields above)
     private String creatorId;
-    private List<String> memberIds;
     private List<String> moderatorIds;
     private int maxCapacity;
     private List<String> topics;
     private PodType type; // Changed from 'podType' to 'type' to match frontend
     private PodStatus status;
     private PodScope scope; // CAMPUS or GLOBAL
+    private String college; // Denormalized college name for campus isolation (e.g., "IIT", "Sinhgad",
+                            // "GLOBAL")
+
+    // ✅ NEW: Buddy Beacon Fields - Link to Event & Track Origin
+    private String eventId; // Link to the Hackathon/Event (null for general pods, set for event-based
+                            // teams)
     private LocalDateTime createdAt;
     private LocalDateTime lastActive;
     private List<String> resources; // Links to study materials
@@ -52,7 +65,8 @@ public class CollabPod {
         MENTORSHIP,
         COURSE_SPECIFIC,
         LOOKING_FOR,
-        COLLAB // Global collaboration rooms created from COLLAB posts
+        COLLAB, // Global collaboration rooms created from COLLAB posts
+        TEAM // ✅ NEW: Event-based team pods (created from TeamFindingPost expiry)
     }
 
     public enum PodStatus {

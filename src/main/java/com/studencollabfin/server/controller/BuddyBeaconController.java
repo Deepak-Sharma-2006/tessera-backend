@@ -2,6 +2,7 @@ package com.studencollabfin.server.controller;
 
 import com.studencollabfin.server.model.*;
 import com.studencollabfin.server.service.BuddyBeaconService;
+import com.studencollabfin.server.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,6 +19,9 @@ public class BuddyBeaconController {
 
     @Autowired
     private BuddyBeaconService beaconService;
+
+    @Autowired
+    private UserService userService;
 
     // Get the currently logged-in user's ID from JWT authentication context or
     // request header
@@ -53,12 +57,34 @@ public class BuddyBeaconController {
     }
 
     /**
-     * Global feed: Aggregates BuddyBeacon and TeamFindingPost posts.
+     * Campus Feed: Aggregates BuddyBeacon and TeamFindingPost posts for current
+     * user's college.
+     * ✅ Campus Isolation: Only returns posts from the current user's college.
      */
     @GetMapping("/feed")
     public List<Map<String, Object>> getAllBeaconPosts(Authentication authentication) {
         String userId = getCurrentUserId(authentication);
-        return beaconService.getAllBeaconPosts(userId);
+        String userCollege = null;
+
+        // Fetch current user's college
+        if (userId != null && !userId.trim().isEmpty()) {
+            try {
+                User currentUser = userService.getUserById(userId);
+                if (currentUser != null && currentUser.getCollegeName() != null) {
+                    userCollege = currentUser.getCollegeName();
+                    System.out.println("✅ Fetching Buddy Beacon feed for college: " + userCollege);
+                }
+            } catch (Exception ex) {
+                System.err.println("⚠️ Error fetching current user: " + ex.getMessage());
+            }
+        }
+
+        if (userCollege == null || userCollege.trim().isEmpty()) {
+            System.out.println("⚠️ User college is null/empty, returning empty Buddy Beacon feed");
+            return new ArrayList<>();
+        }
+
+        return beaconService.getAllBeaconPosts(userId, userCollege);
     }
 
     /**

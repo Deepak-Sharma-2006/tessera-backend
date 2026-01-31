@@ -40,13 +40,26 @@ public class CollabPodService {
     @SuppressWarnings("null")
     public CollabPod createPod(String creatorId, CollabPod pod) {
         System.out.println("CollabPodService.createPod called with creatorId: " + creatorId);
-        userRepository.findById((String) creatorId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        var userOpt = userRepository.findById((String) creatorId);
+        var user = userOpt.orElseThrow(() -> new RuntimeException("User not found"));
 
         pod.setCreatorId(creatorId);
         pod.setCreatedAt(LocalDateTime.now());
         pod.setLastActive(LocalDateTime.now());
         pod.setStatus(CollabPod.PodStatus.ACTIVE);
+
+        // ✅ Campus Isolation: Set college based on pod scope
+        if (pod.getScope() == com.studencollabfin.server.model.PodScope.CAMPUS) {
+            // Campus pods: Store user's college for isolation
+            if (user.getCollegeName() != null) {
+                pod.setCollege(user.getCollegeName());
+                System.out.println("✅ CAMPUS pod college set to: " + user.getCollegeName());
+            }
+        } else if (pod.getScope() == com.studencollabfin.server.model.PodScope.GLOBAL) {
+            // Global pods: Mark with "GLOBAL" so they're visible to all
+            pod.setCollege("GLOBAL");
+            System.out.println("✅ GLOBAL pod college set to: GLOBAL");
+        }
 
         if (pod.getMemberIds() == null) {
             pod.setMemberIds(new java.util.ArrayList<>());
@@ -204,7 +217,7 @@ public class CollabPodService {
             message.setRead(false);
 
             // Set messageType and scope for campus pods
-            message.setMessageType("CAMPUS_POD");
+            message.setMessageType(Message.MessageType.CHAT);
             message.setScope("CAMPUS");
 
             // CRITICAL: Save to messages collection with ALL fields intact

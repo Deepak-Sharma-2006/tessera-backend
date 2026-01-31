@@ -19,6 +19,7 @@ import java.util.List;
 public class PostService {
     private final PostRepository postRepository;
     private final CommentRepository commentRepository;
+    private final EventService eventService;
 
     public SocialPost toggleLike(String postId, String userId) {
         Post post = getPostById(postId);
@@ -118,6 +119,17 @@ public class PostService {
     public Post createPost(Post post, String authorId) {
         post.setAuthorId(authorId);
         post.setCreatedAt(LocalDateTime.now());
+
+        // ✅ Campus Isolation: Fetch author and set college
+        try {
+            com.studencollabfin.server.model.User author = userService.getUserById(authorId);
+            if (author != null && author.getCollegeName() != null) {
+                post.setCollege(author.getCollegeName());
+                System.out.println("✅ Post college set to: " + author.getCollegeName());
+            }
+        } catch (Exception ex) {
+            System.err.println("⚠️ Failed to fetch author for college assignment: " + ex.getMessage());
+        }
 
         // If this is a SocialPost, handle both LOOKING_FOR and COLLAB types
         if (post instanceof SocialPost) {
@@ -220,6 +232,11 @@ public class PostService {
                 teamPost.setLinkedPodId(createdPod.getId());
                 savedPost = postRepository.save(teamPost); // Save the updated post and return it
                 System.out.println("TeamFindingPost saved with linkedPodId: " + createdPod.getId());
+
+                // ✅ NEW: Refresh event stats when team post is created
+                if (teamPost.getEventId() != null && !teamPost.getEventId().isEmpty()) {
+                    eventService.refreshEventStats(teamPost.getEventId());
+                }
             } catch (Exception ex) {
                 System.err.println("Failed to create CollabPod during team post creation: " + ex.getMessage());
                 ex.printStackTrace();
@@ -235,6 +252,17 @@ public class PostService {
         return postRepository.findByEventId(eventId);
     }
 
+    // ✅ Campus Isolation: Fetch posts from current user's college only
+    public List<Post> getAllPosts(String userCollegeName) {
+        if (userCollegeName == null || userCollegeName.trim().isEmpty()) {
+            System.err.println("⚠️ User college is null/empty, returning empty post list for campus isolation");
+            return new java.util.ArrayList<>();
+        }
+        return postRepository.findByCollege(userCollegeName);
+    }
+
+    // Legacy method for backward compatibility (returns all posts without
+    // filtering)
     public List<Post> getAllPosts() {
         return postRepository.findAll();
     }
