@@ -20,8 +20,11 @@ public class CollabPod {
 
     // ✅ NEW: Role-based system (replaces simple memberIds + moderatorIds)
     private String ownerId; // Immutable - the creator of the pod
+    private String ownerName; // Store owner's name for display
     private List<String> adminIds; // Admins with moderation rights
+    private List<String> adminNames; // Store admin names parallel to adminIds
     private List<String> memberIds; // Regular members
+    private List<String> memberNames; // Store member names parallel to memberIds
     private List<String> bannedIds; // Banned users (permanently removed)
 
     // DEPRECATED (kept for backward compatibility - use role-based fields above)
