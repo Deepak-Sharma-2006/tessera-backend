@@ -176,8 +176,11 @@ public class InboxController {
         System.out.println("📬 InboxController.clearInboxByType called for user: " + userId + ", type: " + type);
 
         try {
+            // Convert string to enum
+            Inbox.NotificationType notificationType = Inbox.NotificationType.valueOf(type);
+            
             // Find all items of this type for the user
-            List<Inbox> items = inboxRepository.findByUserIdAndType(userId, type);
+            List<Inbox> items = inboxRepository.findByUserIdAndType(userId, notificationType);
 
             if (items.isEmpty()) {
                 System.out.println("  ℹ️ No items of type " + type + " found for user " + userId);

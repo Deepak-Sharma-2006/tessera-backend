@@ -16,6 +16,6 @@ public interface InboxRepository extends MongoRepository<Inbox, String> {
     // Find unread inbox items for a user
     List<Inbox> findByUserIdAndReadFalse(String userId);
 
-    // Find inbox items by type and user
-    List<Inbox> findByUserIdAndType(String userId, String type);
+    // Find inbox items by type and user (using enum)
+    List<Inbox> findByUserIdAndType(String userId, Inbox.NotificationType type);
 }
