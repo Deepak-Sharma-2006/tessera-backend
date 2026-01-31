@@ -159,8 +159,9 @@ public class PostService {
             if (author != null) {
                 author.setPostsCount((author.getPostsCount() == 0 ? 0 : author.getPostsCount()) + 1);
                 userService.updateUserProfile(authorId, author);
-                System.out.println("✓ Incremented postsCount for user: " + authorId + " (new count: " + author.getPostsCount() + ")");
-                
+                System.out.println("✓ Incremented postsCount for user: " + authorId + " (new count: "
+                        + author.getPostsCount() + ")");
+
                 // ✅ SYNC BADGES: Check if user reached postsCount >= 5 for Signal Guardian
                 achievementService.syncUserBadges(author);
             }

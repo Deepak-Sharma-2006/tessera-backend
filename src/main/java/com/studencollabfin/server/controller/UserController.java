@@ -36,10 +36,10 @@ public class UserController {
     public ResponseEntity<?> getProfile(@PathVariable String userId) {
         try {
             User user = userService.findById(userId);
-            
+
             // ✅ CRITICAL: Sync all badges based on current user attributes
             User syncedUser = achievementService.syncUserBadges(user);
-            
+
             return ResponseEntity.ok(syncedUser);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
@@ -226,10 +226,10 @@ public class UserController {
             gamificationService.awardXp(userId, XPAction.RECEIVE_ENDORSEMENT);
 
             user = userRepository.save(user);
-            
+
             // ✅ SYNC BADGES: Check if endorsement count triggered any badges
             User syncedUser = achievementService.syncUserBadges(user);
-            
+
             return ResponseEntity.ok(syncedUser);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
@@ -240,7 +240,8 @@ public class UserController {
 
     /**
      * ✅ SYNC-BADGES ENDPOINT
-     * Calls AchievementService.syncUserBadges to update all badges based on user attributes
+     * Calls AchievementService.syncUserBadges to update all badges based on user
+     * attributes
      */
     @PostMapping("/{userId}/sync-badges")
     public ResponseEntity<?> syncBadges(@PathVariable String userId) {

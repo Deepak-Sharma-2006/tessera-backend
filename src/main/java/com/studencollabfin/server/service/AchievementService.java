@@ -59,8 +59,9 @@ public class AchievementService {
                 achievement.setUnlocked(true);
                 achievement.setUnlockedAt(LocalDateTime.now());
                 achievementRepository.save(achievement);
-                
-                // ✅ CRITICAL: Also add badge to user.badges array in MongoDB so frontend can check it
+
+                // ✅ CRITICAL: Also add badge to user.badges array in MongoDB so frontend can
+                // check it
                 userRepository.findById(userId).ifPresent(user -> {
                     if (user.getBadges() == null) {
                         user.setBadges(new ArrayList<>());
@@ -70,7 +71,7 @@ public class AchievementService {
                         userRepository.save(user);
                     }
                 });
-                
+
                 notificationService.notifyUser(userId, Map.of("type", "ACHIEVEMENT_UNLOCKED", "title", title));
             }
         });
@@ -116,10 +117,10 @@ public class AchievementService {
         System.out.println("   isDev: " + user.isDev() + " | role: " + user.getRole());
 
         // ╔════════════════════════════════════════════════════════════════╗
-        // ║ BADGE 1: FOUNDING DEV - 100% isDev DEPENDENT                  ║
-        // ║ DOES NOT depend on role. INDEPENDENT of Campus Catalyst.      ║
+        // ║ BADGE 1: FOUNDING DEV - 100% isDev DEPENDENT ║
+        // ║ DOES NOT depend on role. INDEPENDENT of Campus Catalyst. ║
         // ╚════════════════════════════════════════════════════════════════╝
-        
+
         if (user.isDev()) {
             // isDev is TRUE → Must have Founding Dev badge
             if (!currentBadges.contains("Founding Dev")) {
@@ -139,10 +140,10 @@ public class AchievementService {
         }
 
         // ╔════════════════════════════════════════════════════════════════╗
-        // ║ BADGE 2: CAMPUS CATALYST - 100% ROLE DEPENDENT                ║
-        // ║ DOES NOT depend on isDev. INDEPENDENT of Founding Dev.        ║
+        // ║ BADGE 2: CAMPUS CATALYST - 100% ROLE DEPENDENT ║
+        // ║ DOES NOT depend on isDev. INDEPENDENT of Founding Dev. ║
         // ╚════════════════════════════════════════════════════════════════╝
-        
+
         if ("COLLEGE_HEAD".equals(user.getRole())) {
             // Role is COLLEGE_HEAD → Must have Campus Catalyst badge
             if (!currentBadges.contains("Campus Catalyst")) {
@@ -162,27 +163,29 @@ public class AchievementService {
         }
 
         // ╔════════════════════════════════════════════════════════════════╗
-        // ║ BADGE 3: SKILL SAGE - endorsementsCount >= 3                  ║
+        // ║ BADGE 3: SKILL SAGE - endorsementsCount >= 3 ║
         // ╚════════════════════════════════════════════════════════════════╝
-        
+
         if (user.getEndorsementsCount() >= 3) {
             if (!currentBadges.contains("Skill Sage")) {
                 currentBadges.add("Skill Sage");
                 updated = true;
-                System.out.println("   ✅ ACTION: ADDED 'Skill Sage' (endorsements=" + user.getEndorsementsCount() + ")");
+                System.out
+                        .println("   ✅ ACTION: ADDED 'Skill Sage' (endorsements=" + user.getEndorsementsCount() + ")");
             }
         } else {
             if (currentBadges.contains("Skill Sage")) {
                 currentBadges.remove("Skill Sage");
                 updated = true;
-                System.out.println("   ✅ ACTION: REMOVED 'Skill Sage' (endorsements=" + user.getEndorsementsCount() + ")");
+                System.out.println(
+                        "   ✅ ACTION: REMOVED 'Skill Sage' (endorsements=" + user.getEndorsementsCount() + ")");
             }
         }
 
         // ╔════════════════════════════════════════════════════════════════╗
-        // ║ BADGE 4: SIGNAL GUARDIAN - postsCount >= 5                    ║
+        // ║ BADGE 4: SIGNAL GUARDIAN - postsCount >= 5 ║
         // ╚════════════════════════════════════════════════════════════════╝
-        
+
         if (user.getPostsCount() >= 5) {
             if (!currentBadges.contains("Signal Guardian")) {
                 currentBadges.add("Signal Guardian");
@@ -198,7 +201,7 @@ public class AchievementService {
         }
 
         // ╔════════════════════════════════════════════════════════════════╗
-        // ║ BADGE 5: POD PIONEER - activity-based (permanent once earned)  ║
+        // ║ BADGE 5: POD PIONEER - activity-based (permanent once earned) ║
         // ╚════════════════════════════════════════════════════════════════╝
         // Pod Pioneer is added by achievement trigger, never removed
 
