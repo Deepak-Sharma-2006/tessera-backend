@@ -3,8 +3,10 @@ package com.studencollabfin.server.controller;
 import com.studencollabfin.server.model.CollabPod;
 import com.studencollabfin.server.model.Message;
 import com.studencollabfin.server.model.PodScope;
+import com.studencollabfin.server.model.XPAction;
 import com.studencollabfin.server.repository.CollabPodRepository;
 import com.studencollabfin.server.service.CollabPodService;
+import com.studencollabfin.server.service.GamificationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,10 +28,13 @@ public class CollabPodController {
 
     private final CollabPodRepository collabPodRepository;
     private final CollabPodService collabPodService;
+    private final GamificationService gamificationService;
 
-    public CollabPodController(CollabPodRepository collabPodRepository, CollabPodService collabPodService) {
+    public CollabPodController(CollabPodRepository collabPodRepository, CollabPodService collabPodService,
+            GamificationService gamificationService) {
         this.collabPodRepository = collabPodRepository;
         this.collabPodService = collabPodService;
+        this.gamificationService = gamificationService;
     }
 
     /**
@@ -234,6 +239,9 @@ public class CollabPodController {
             if (!pod.getMemberIds().contains(userId)) {
                 pod.getMemberIds().add(userId);
                 collabPodRepository.save(pod);
+
+                // 📊 GAMIFICATION: Award XP for joining a pod
+                gamificationService.awardXp(userId, XPAction.JOIN_POD);
             }
 
             return ResponseEntity.ok(java.util.Map.of("message", "Successfully joined pod", "pod", pod));

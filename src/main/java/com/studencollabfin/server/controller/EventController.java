@@ -2,7 +2,9 @@ package com.studencollabfin.server.controller;
 
 import com.studencollabfin.server.dto.CreateEventRequest;
 import com.studencollabfin.server.model.Event;
+import com.studencollabfin.server.model.XPAction;
 import com.studencollabfin.server.service.EventService;
+import com.studencollabfin.server.service.GamificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +19,7 @@ import java.util.List;
 public class EventController {
 
     private final EventService eventService;
+    private final GamificationService gamificationService;
 
     /**
      * GET /api/events -> Get all events
@@ -49,10 +52,20 @@ public class EventController {
      * CreateEventRequest.
      */
     @PostMapping
-    public ResponseEntity<Event> createEvent(@RequestBody CreateEventRequest request) {
+    public ResponseEntity<Event> createEvent(@RequestBody CreateEventRequest request,
+            @RequestHeader(value = "X-User-Id", required = false) String userId) {
         // TODO: Add security here to ensure only users with a 'MODERATOR' role can
         // access this endpoint.
         Event createdEvent = eventService.createEvent(request);
+
+        // 📊 GAMIFICATION: Award XP for creating an event
+        if (userId != null && !userId.isEmpty()) {
+            gamificationService.awardXp(userId, XPAction.CREATE_EVENT);
+        } else if (request.getOrganizer() != null && !request.getOrganizer().isEmpty()) {
+            // Fallback: use organizer field if userId header not provided
+            gamificationService.awardXp(request.getOrganizer(), XPAction.CREATE_EVENT);
+        }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(createdEvent);
     }
 

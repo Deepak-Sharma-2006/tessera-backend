@@ -11,8 +11,13 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void configureMessageBroker(@org.springframework.lang.NonNull MessageBrokerRegistry config) {
-        config.enableSimpleBroker("/topic");
+        // Enable simple broker for /topic and /queue destinations
+        // User-specific messages will be sent to /user/{userId}/queue/* or
+        // /user/{userId}/topic/*
+        config.enableSimpleBroker("/topic", "/queue");
         config.setApplicationDestinationPrefixes("/app");
+        // Set the prefix for user-specific destinations
+        config.setUserDestinationPrefix("/user");
     }
 
     @Override

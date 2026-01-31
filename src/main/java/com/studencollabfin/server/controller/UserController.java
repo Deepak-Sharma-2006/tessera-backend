@@ -2,8 +2,10 @@ package com.studencollabfin.server.controller;
 
 import com.studencollabfin.server.model.User;
 import com.studencollabfin.server.model.Achievement;
+import com.studencollabfin.server.model.XPAction;
 import com.studencollabfin.server.service.UserService;
 import com.studencollabfin.server.service.AchievementService;
+import com.studencollabfin.server.service.GamificationService;
 import com.studencollabfin.server.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -25,13 +27,16 @@ public class UserController {
     private AchievementService achievementService;
 
     @Autowired
+    private GamificationService gamificationService;
+
+    @Autowired
     private UserRepository userRepository;
 
     @GetMapping("/{userId}")
     public ResponseEntity<?> getProfile(@PathVariable String userId) {
         try {
             User user = userService.findById(userId);
-            
+
             // Auto-add Founding Dev badge if isDev is true
             if (user.isDev() && (user.getBadges() == null || !user.getBadges().contains("Founding Dev"))) {
                 if (user.getBadges() == null) {
@@ -40,16 +45,17 @@ public class UserController {
                 user.getBadges().add("Founding Dev");
                 userRepository.save(user);
             }
-            
+
             // Auto-add Campus Catalyst badge if role is COLLEGE_HEAD
-            if ("COLLEGE_HEAD".equals(user.getRole()) && (user.getBadges() == null || !user.getBadges().contains("Campus Catalyst"))) {
+            if ("COLLEGE_HEAD".equals(user.getRole())
+                    && (user.getBadges() == null || !user.getBadges().contains("Campus Catalyst"))) {
                 if (user.getBadges() == null) {
                     user.setBadges(new ArrayList<>());
                 }
                 user.getBadges().add("Campus Catalyst");
                 userRepository.save(user);
             }
-            
+
             return ResponseEntity.ok(user);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
@@ -60,25 +66,27 @@ public class UserController {
     public ResponseEntity<?> updateUserProfile(@PathVariable String userId, @RequestBody User profileData) {
         try {
             User updatedUser = userService.updateUserProfile(userId, profileData);
-            
+
             // Auto-add Founding Dev badge if isDev is true
-            if (updatedUser.isDev() && (updatedUser.getBadges() == null || !updatedUser.getBadges().contains("Founding Dev"))) {
+            if (updatedUser.isDev()
+                    && (updatedUser.getBadges() == null || !updatedUser.getBadges().contains("Founding Dev"))) {
                 if (updatedUser.getBadges() == null) {
                     updatedUser.setBadges(new ArrayList<>());
                 }
                 updatedUser.getBadges().add("Founding Dev");
                 updatedUser = userRepository.save(updatedUser);
             }
-            
+
             // Auto-add Campus Catalyst badge if role is COLLEGE_HEAD
-            if ("COLLEGE_HEAD".equals(updatedUser.getRole()) && (updatedUser.getBadges() == null || !updatedUser.getBadges().contains("Campus Catalyst"))) {
+            if ("COLLEGE_HEAD".equals(updatedUser.getRole())
+                    && (updatedUser.getBadges() == null || !updatedUser.getBadges().contains("Campus Catalyst"))) {
                 if (updatedUser.getBadges() == null) {
                     updatedUser.setBadges(new ArrayList<>());
                 }
                 updatedUser.getBadges().add("Campus Catalyst");
                 updatedUser = userRepository.save(updatedUser);
             }
-            
+
             return ResponseEntity.ok(updatedUser);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
@@ -92,7 +100,7 @@ public class UserController {
             return ResponseEntity.ok(Map.of(
                     "currentXP", user.getXp(),
                     "level", user.getLevel(),
-                    "nextLevelXP", user.getTotalXP()));
+                    "nextLevelXP", 100 - user.getXp()));
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
@@ -247,6 +255,9 @@ public class UserController {
             // Increment endorsement count
             user.setEndorsementsCount(user.getEndorsementsCount() + 1);
 
+            // 📊 GAMIFICATION: Award XP for receiving endorsement
+            gamificationService.awardXp(userId, XPAction.RECEIVE_ENDORSEMENT);
+
             // Reaching 3 endorsements unlocks the Skill Sage badge
             if (user.getEndorsementsCount() >= 3 && !user.getBadges().contains("Skill Sage")) {
                 if (user.getBadges() == null) {
@@ -264,7 +275,7 @@ public class UserController {
     }
 
     // ============ BADGE SYNCHRONIZATION ============
-    
+
     /**
      * Syncs badges based on user flags (isDev, role)
      * Adds Founding Dev if isDev=true, Campus Catalyst if role=COLLEGE_HEAD
@@ -275,41 +286,41 @@ public class UserController {
         try {
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new RuntimeException("User not found"));
-            
+
             if (user.getBadges() == null) {
                 user.setBadges(new ArrayList<>());
             }
-            
+
             boolean updated = false;
-            
+
             // Add Founding Dev badge if isDev is true
             if (user.isDev() && !user.getBadges().contains("Founding Dev")) {
                 user.getBadges().add("Founding Dev");
                 updated = true;
             }
-            
+
             // Add Campus Catalyst badge if role is COLLEGE_HEAD
             if ("COLLEGE_HEAD".equals(user.getRole()) && !user.getBadges().contains("Campus Catalyst")) {
                 user.getBadges().add("Campus Catalyst");
                 updated = true;
             }
-            
+
             // Remove Founding Dev if isDev is now false
             if (!user.isDev() && user.getBadges().contains("Founding Dev")) {
                 user.getBadges().remove("Founding Dev");
                 updated = true;
             }
-            
+
             // Remove Campus Catalyst if role is no longer COLLEGE_HEAD
             if (!"COLLEGE_HEAD".equals(user.getRole()) && user.getBadges().contains("Campus Catalyst")) {
                 user.getBadges().remove("Campus Catalyst");
                 updated = true;
             }
-            
+
             if (updated) {
                 user = userRepository.save(user);
             }
-            
+
             return ResponseEntity.ok(user);
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

@@ -81,16 +81,15 @@ public class UserService implements UserDetailsService {
         int newXP = user.getXp() + xpAmount;
         int currentLevel = user.getLevel();
 
-        // Check if user should level up
-        while (newXP >= user.getTotalXP()) {
+        // Check if user should level up (100 XP per level)
+        while (newXP >= 100) {
             currentLevel++;
-            newXP -= user.getTotalXP();
-            // Increase XP requirement for next level
-            user.setTotalXP((int) (user.getTotalXP() * 1.5));
+            newXP -= 100;
         }
 
         user.setXp(newXP);
         user.setLevel(currentLevel);
+        user.setTotalXp(user.getTotalXp() + xpAmount);
         userRepository.save(user);
 
         // Check for achievements
@@ -200,9 +199,11 @@ public class UserService implements UserDetailsService {
                         String collegeName = deriveCollegeFromEmail(email);
                         newUser.setCollegeName(collegeName);
 
-                        newUser.setLevel(1);
+                        // 📊 XP SYSTEM: Start all new users at Level 0
+                        newUser.setLevel(0);
                         newUser.setXp(0);
-                        newUser.setTotalXP(100);
+                        newUser.setTotalXp(0);
+                        newUser.setXpMultiplier(1.0);
                         newUser.setProfileCompleted(false);
 
                         // Set creation timestamps
@@ -234,9 +235,11 @@ public class UserService implements UserDetailsService {
         String collegeName = deriveCollegeFromEmail(email);
         newUser.setCollegeName(collegeName);
 
-        newUser.setLevel(1);
+        // 📊 XP SYSTEM: Start all new users at Level 0
+        newUser.setLevel(0);
         newUser.setXp(0);
-        newUser.setTotalXP(100);
+        newUser.setTotalXp(0);
+        newUser.setXpMultiplier(1.0);
         newUser.setProfileCompleted(false);
 
         // Set creation timestamps

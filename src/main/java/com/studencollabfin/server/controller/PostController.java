@@ -3,8 +3,10 @@ package com.studencollabfin.server.controller;
 import com.studencollabfin.server.model.Post;
 import com.studencollabfin.server.model.SocialPost;
 import com.studencollabfin.server.model.TeamFindingPost;
+import com.studencollabfin.server.model.XPAction;
 import com.studencollabfin.server.service.PostService;
 import com.studencollabfin.server.service.UserService;
+import com.studencollabfin.server.service.GamificationService;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.aggregation.AggregationResults;
@@ -23,6 +25,11 @@ import com.studencollabfin.server.dto.CommentRequest;
 @RequiredArgsConstructor
 @CrossOrigin(origins = "http://localhost:5173", allowCredentials = "true")
 public class PostController {
+
+    private final PostService postService;
+    private final GamificationService gamificationService;
+    private final MongoTemplate mongoTemplate;
+    private final UserService userService;
 
     @PutMapping("/{postId}/like")
     public ResponseEntity<SocialPost> toggleLike(@PathVariable String postId, Authentication authentication,
@@ -43,10 +50,6 @@ public class PostController {
         Post updatedPost = postService.voteOnPollOption(postId, optionId, userId);
         return ResponseEntity.ok(updatedPost);
     }
-
-    private final PostService postService;
-    private final MongoTemplate mongoTemplate;
-    private final UserService userService;
 
     // Helper method to add author details to richPost
     private void addAuthorDetailsToPost(java.util.Map<String, Object> richPost, String authorId) {
@@ -171,6 +174,10 @@ public class PostController {
             System.out.println("Author ID: " + userId);
             Post createdPost = postService.createPost(socialPost, userId);
             System.out.println("Post created successfully with ID: " + createdPost.getId());
+
+            // 📊 GAMIFICATION: Award XP for creating a post
+            gamificationService.awardXp(userId, XPAction.CREATE_POST);
+
             return ResponseEntity.status(HttpStatus.CREATED).body(createdPost);
         } catch (Exception e) {
             e.printStackTrace();
@@ -197,6 +204,10 @@ public class PostController {
         }
 
         Post createdPost = postService.createPost(teamFindingPost, userId);
+
+        // 📊 GAMIFICATION: Award XP for creating a post
+        gamificationService.awardXp(userId, XPAction.CREATE_POST);
+
         return ResponseEntity.status(HttpStatus.CREATED).body(createdPost);
     }
 
