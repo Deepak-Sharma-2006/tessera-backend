@@ -373,7 +373,7 @@ public class BuddyBeaconService {
                     // ✅ FEATURE: Create inbox notification for the applicant
                     Inbox inboxMessage = new Inbox();
                     inboxMessage.setUserId(app.getApplicantId());
-                    inboxMessage.setType("APPLICATION_FEEDBACK");
+                    inboxMessage.setType(Inbox.NotificationType.APPLICATION_FEEDBACK);
                     inboxMessage.setTitle("Application Accepted!");
                     inboxMessage.setMessage("Congratulations! You've been accepted to '" + beacon.getTitle() + "'!");
                     inboxMessage.setApplicationId(applicationId);
@@ -437,7 +437,7 @@ public class BuddyBeaconService {
                     // ✅ FEATURE: Create inbox notification for the applicant
                     Inbox inboxMessage = new Inbox();
                     inboxMessage.setUserId(app.getApplicantId());
-                    inboxMessage.setType("APPLICATION_FEEDBACK");
+                    inboxMessage.setType(Inbox.NotificationType.APPLICATION_FEEDBACK);
                     inboxMessage.setTitle("Application Accepted!");
                     inboxMessage.setMessage("Congratulations! You've been accepted to '" + teamPost.getTitle() + "'!");
                     inboxMessage.setApplicationId(applicationId);
@@ -478,7 +478,7 @@ public class BuddyBeaconService {
                     // ✅ FEATURE: Create inbox notification for the applicant
                     Inbox inboxMessage = new Inbox();
                     inboxMessage.setUserId(app.getApplicantId());
-                    inboxMessage.setType("APPLICATION_FEEDBACK");
+                    inboxMessage.setType(Inbox.NotificationType.APPLICATION_FEEDBACK);
                     inboxMessage.setTitle("Application Rejected");
                     inboxMessage.setMessage("Your application to '" + beacon.getTitle() + "' has been rejected.");
                     inboxMessage.setApplicationId(applicationId);
@@ -511,7 +511,7 @@ public class BuddyBeaconService {
                     // ✅ FEATURE: Create inbox notification for the applicant
                     Inbox inboxMessage = new Inbox();
                     inboxMessage.setUserId(app.getApplicantId());
-                    inboxMessage.setType("APPLICATION_FEEDBACK");
+                    inboxMessage.setType(Inbox.NotificationType.APPLICATION_FEEDBACK);
                     inboxMessage.setTitle("Application Rejected");
                     inboxMessage.setMessage("Your application to '" + teamPost.getTitle() + "' has been rejected.");
                     inboxMessage.setApplicationId(applicationId);

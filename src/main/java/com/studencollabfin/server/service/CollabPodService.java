@@ -417,11 +417,11 @@ public class CollabPodService {
             System.out.println("  ℹ️ Creating inbox notification for banned user: " + targetId);
             Inbox inboxNotification = new Inbox();
             inboxNotification.setUserId(targetId);
-            inboxNotification.setType(Inbox.NotificationType.POD_BAN.toString());
+            inboxNotification.setType(Inbox.NotificationType.POD_BAN);
             inboxNotification.setTitle("You were removed from " + pod.getName());
             inboxNotification
                     .setMessage("Reason: " + (reason != null && !reason.isEmpty() ? reason : "No reason provided"));
-            inboxNotification.setSeverity(Inbox.NotificationSeverity.HIGH.toString());
+            inboxNotification.setSeverity(Inbox.NotificationSeverity.HIGH);
             inboxNotification.setPodId(podId);
             inboxNotification.setPodName(pod.getName());
             inboxNotification.setReason(reason);

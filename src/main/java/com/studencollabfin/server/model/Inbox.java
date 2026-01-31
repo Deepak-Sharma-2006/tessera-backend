@@ -21,7 +21,8 @@ public class Inbox {
      */
     public enum NotificationType {
         POD_BAN,
-        APPLICATION_REJECTION
+        APPLICATION_REJECTION,
+        APPLICATION_FEEDBACK
     }
 
     /**
