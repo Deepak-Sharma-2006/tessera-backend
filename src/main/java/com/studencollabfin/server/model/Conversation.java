@@ -10,6 +10,8 @@ public class Conversation {
     @Id
     private String id;
     private List<String> participantIds; // user IDs of both participants
+    private String status; // "PENDING" or "ACCEPTED"
+    private String initiatorId; // User ID who initiated the invite
     private Date createdAt;
     private Date updatedAt;
 
@@ -44,5 +46,21 @@ public class Conversation {
 
     public void setUpdatedAt(Date updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public String getInitiatorId() {
+        return initiatorId;
+    }
+
+    public void setInitiatorId(String initiatorId) {
+        this.initiatorId = initiatorId;
     }
 }

@@ -28,6 +28,10 @@ public class PodChatWSController {
     @MessageMapping("/pod.{podId}.chat")
     public void handlePodMessage(@DestinationVariable String podId, @Payload Message message) {
         try {
+            System.out.println("📨 [WS] Message received for pod: " + podId);
+            System.out.println("   Content: " + message.getContent());
+            System.out.println("   Sender: " + message.getSenderName() + " (" + message.getSenderId() + ")");
+
             // Ensure pod context is properly set
             message.setPodId(podId);
             message.setConversationId(podId);
@@ -36,12 +40,15 @@ public class PodChatWSController {
 
             // CRITICAL: Save message to database BEFORE broadcasting
             // This ensures data persistence even if WebSocket connection drops
+            System.out.println("💾 [DB] Saving message to database...");
             Message savedMessage = collabPodService.saveMessage(message);
+            System.out.println("✅ [DB] Message saved with ID: " + savedMessage.getId());
 
             // Broadcast saved message to all subscribers of this pod
-            messagingTemplate.convertAndSend(
-                    String.format("/topic/pod.%s.chat", podId),
-                    savedMessage);
+            String topicPath = String.format("/topic/pod.%s.chat", podId);
+            System.out.println("📤 [WS] Broadcasting to: " + topicPath);
+            messagingTemplate.convertAndSend(topicPath, savedMessage);
+            System.out.println("✅ [WS] Broadcast complete");
 
             System.out.println("✓ Pod message handled for pod " + podId + ": " + savedMessage.getId());
         } catch (Exception e) {
