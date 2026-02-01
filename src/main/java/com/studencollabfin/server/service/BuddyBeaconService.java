@@ -221,6 +221,7 @@ public class BuddyBeaconService {
                 applicant.put("_id", app.getId());
                 applicant.put("applicationId", app.getId());
                 applicant.put("status", app.getStatus() != null ? app.getStatus().toString() : "PENDING");
+                applicant.put("message", app.getMessage()); // ✅ FIXED: Include application message
                 if (app.getApplicantId() != null) {
                     @SuppressWarnings("null")
                     var userOpt = userRepository.findById((String) app.getApplicantId());
@@ -256,6 +257,7 @@ public class BuddyBeaconService {
                 applicant.put("_id", app.getId());
                 applicant.put("applicationId", app.getId());
                 applicant.put("status", app.getStatus() != null ? app.getStatus().toString() : "PENDING");
+                applicant.put("message", app.getMessage()); // ✅ FIXED: Include application message
                 if (app.getApplicantId() != null) {
                     @SuppressWarnings("null")
                     var userOpt = userRepository.findById((String) app.getApplicantId());
