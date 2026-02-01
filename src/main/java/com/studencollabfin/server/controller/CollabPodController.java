@@ -487,21 +487,42 @@ public class CollabPodController {
      * 
      * Flow: Pod deletion → Messages deleted → Linked post deleted
      * 
+     * Permission: Only the current pod owner can delete a pod.
+     * Delete authority transfers with ownership, not tied to creator.
+     * 
      * Returns metadata including which post type tabs need to refresh on client.
      * This ensures users don't see ghost posts after a pod is deleted.
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deletePod(@PathVariable String id) {
+    public ResponseEntity<?> deletePod(@PathVariable String id, 
+                                       Authentication authentication,
+                                       HttpServletRequest request) {
         try {
-            // Fetch pod BEFORE deletion to determine scope and return refresh info
+            // Get current user ID
+            String currentUserId = getCurrentUserId(authentication, request);
+            if (currentUserId == null || currentUserId.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "User not authenticated"));
+            }
+
+            // Fetch pod BEFORE deletion to check ownership and determine scope
             @SuppressWarnings("null")
             java.util.Optional<CollabPod> podOpt = collabPodRepository.findById(id);
 
-            String scope = "UNKNOWN";
-            if (podOpt.isPresent()) {
-                CollabPod pod = podOpt.get();
-                scope = pod.getScope() != null ? pod.getScope().toString() : "UNKNOWN";
+            if (podOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("error", "Pod not found"));
             }
+
+            CollabPod pod = podOpt.get();
+            
+            // Verify current user is the pod owner (permission follows ownership, not creator)
+            if (!pod.getOwnerId().equals(currentUserId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("error", "Only the pod owner can delete this pod"));
+            }
+
+            String scope = pod.getScope() != null ? pod.getScope().toString() : "UNKNOWN";
 
             // Perform cascade delete
             collabPodService.deletePod(id);
