@@ -22,25 +22,37 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                // Enable CORS with the configuration source defined below
                 .cors(withDefaults())
+                // Disable CSRF for stateless APIs
                 .csrf(AbstractHttpConfigurer::disable)
+                // Set session management to stateless (JWT style)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Explicitly allow preflight OPTIONS requests for CORS
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
-                        .anyRequest().permitAll()) // TODO: For development only! Change to .authenticated() for
-                                                   // production
+                        // Allow all other requests (For Dev Only)
+                        .anyRequest().permitAll())
                 .httpBasic(withDefaults())
+                // Return 401 Unauthorized instead of 403 Forbidden for auth errors
                 .exceptionHandling(
                         eh -> eh.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));
+
         return http.build();
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(
-                List.of("http://localhost:5173", "http://localhost:5174", "http://localhost:3000",
-                        "https://tezzera.netlify.app"));
+
+        // WHITELIST: Add your Netlify URL here explicitly
+        configuration.setAllowedOrigins(List.of(
+                "http://localhost:5173", // Local React
+                "http://localhost:5174", // Local React Alternate
+                "http://localhost:3000", // Local React Alternate
+                "https://tezzera.netlify.app" // <-- LIVE FRONTEND (Critical Fix)
+        ));
+
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setExposedHeaders(List.of("*"));
