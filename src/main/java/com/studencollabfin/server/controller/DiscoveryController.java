@@ -85,6 +85,7 @@ public class DiscoveryController {
         @GetMapping("/radar/{userId}")
         @Deprecated
         public ResponseEntity<List<User>> getRadarData(@PathVariable String userId) {
+                @SuppressWarnings("null")
                 User currentUser = userRepository.findById(userId)
                                 .orElseThrow(() -> new RuntimeException("User not found"));
 

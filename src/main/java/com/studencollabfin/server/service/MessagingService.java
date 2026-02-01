@@ -93,8 +93,10 @@ public class MessagingService {
 
         // Send WebSocket alert to target user
         try {
+            @SuppressWarnings("null")
+            String _targetId = targetId;
             messagingTemplate.convertAndSendToUser(
-                    targetId,
+                    _targetId,
                     "/queue/invites",
                     "You have a new collaboration request from a peer with matching skills!");
         } catch (Exception e) {
@@ -112,7 +114,9 @@ public class MessagingService {
      * @param accept         true to accept, false to decline
      */
     public void respondToInvite(String conversationId, boolean accept) {
-        conversationRepository.findById(conversationId).ifPresent(conv -> {
+        @SuppressWarnings("null")
+        String _convId = conversationId;
+        conversationRepository.findById(_convId).ifPresent(conv -> {
             if (accept) {
                 // Accept: change status to ACCEPTED
                 conv.setStatus("ACCEPTED");
@@ -120,7 +124,9 @@ public class MessagingService {
                 conversationRepository.save(conv);
             } else {
                 // Decline: delete the conversation
-                conversationRepository.delete(conv);
+                @SuppressWarnings("null")
+                Conversation _conv = conv;
+                conversationRepository.delete(_conv);
             }
         });
     }

@@ -583,6 +583,7 @@ public class BuddyBeaconService {
         System.out.println("🚀 generateTeamPod called for post: " + postId);
 
         // Step 1: Check if it's a BuddyBeaconPost
+        @SuppressWarnings("null")
         Optional<BuddyBeacon> beaconOpt = beaconRepository.findById(postId);
         if (beaconOpt.isPresent()) {
             BuddyBeacon beacon = beaconOpt.get();
@@ -620,6 +621,7 @@ public class BuddyBeaconService {
         }
 
         // Step 2: Check if it's a TeamFindingPost
+        @SuppressWarnings("null")
         Optional<Post> postOpt = postRepository.findById(postId);
         if (postOpt.isPresent() && postOpt.get() instanceof TeamFindingPost) {
             TeamFindingPost teamPost = (TeamFindingPost) postOpt.get();
