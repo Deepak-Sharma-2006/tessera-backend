@@ -494,9 +494,9 @@ public class CollabPodController {
      * This ensures users don't see ghost posts after a pod is deleted.
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deletePod(@PathVariable String id, 
-                                       Authentication authentication,
-                                       HttpServletRequest request) {
+    public ResponseEntity<?> deletePod(@PathVariable String id,
+            Authentication authentication,
+            HttpServletRequest request) {
         try {
             // Get current user ID
             String currentUserId = getCurrentUserId(authentication, request);
@@ -515,8 +515,9 @@ public class CollabPodController {
             }
 
             CollabPod pod = podOpt.get();
-            
-            // Verify current user is the pod owner (permission follows ownership, not creator)
+
+            // Verify current user is the pod owner (permission follows ownership, not
+            // creator)
             if (!pod.getOwnerId().equals(currentUserId)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body(Map.of("error", "Only the pod owner can delete this pod"));
