@@ -516,8 +516,9 @@ public class CollabPodController {
 
             CollabPod pod = podOpt.get();
 
-            // Verify current user is the pod owner (permission follows ownership, not
-            // creator)
+            // ✅ FIXED: Only the current owner can delete, not the creator
+            // After ownership transfer, the new owner has delete access
+            // The creator becomes a member and loses delete access
             if (!pod.getOwnerId().equals(currentUserId)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body(Map.of("error", "Only the pod owner can delete this pod"));
