@@ -724,7 +724,7 @@ public class BuddyBeaconService {
                     // ✅ NEW: Check expiry using expiresAt if set, otherwise use default 24h logic
                     boolean isExpired = false;
                     LocalDateTime now = LocalDateTime.now();
-                    
+
                     if (teamPost.getExpiresAt() != null) {
                         // Use manually set expiresAt (allows testing via DB edits)
                         isExpired = now.isAfter(teamPost.getExpiresAt());
