@@ -3,6 +3,7 @@ package com.studencollabfin.server.model;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.springframework.data.mongodb.core.mapping.Document;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import java.util.List;
 import java.util.Map;
 import java.time.LocalDateTime;
@@ -28,6 +29,10 @@ public class TeamFindingPost extends Post {
 
     // Link to the pod created for this team finding post
     private String linkedPodId;
+
+    // ✅ AUTO-CALCULATED: Expiry time set to 24h from creation (for testing via manual DB edits)
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+    private LocalDateTime expiresAt;
 
     // Compatibility getters delegating to superclass where appropriate
     public java.time.LocalDateTime getCreatedAt() {
@@ -60,12 +65,24 @@ public class TeamFindingPost extends Post {
 
     /**
      * Computes the post state based on createdAt and current time.
+     * If expiresAt is set, uses that for expiry calculation.
+     * Otherwise defaults to 24h from creation.
      * ACTIVE: 0-20h, CLOSED: 20-24h, EXPIRED: >24h
      */
     public PostState computePostState() {
         if (getCreatedAt() == null)
             return PostState.ACTIVE;
         LocalDateTime now = LocalDateTime.now();
+        
+        // ✅ NEW: Use expiresAt if manually set (for testing), otherwise use default 24h
+        LocalDateTime effectiveExpiry = (this.expiresAt != null) ? this.expiresAt : getCreatedAt().plusHours(24);
+        
+        // If current time is past expiry, it's expired
+        if (now.isAfter(effectiveExpiry)) {
+            return PostState.EXPIRED;
+        }
+        
+        // Calculate hours from creation (for 20h review phase calculation)
         long hours = java.time.Duration.between(getCreatedAt(), now).toHours();
         if (hours < 20)
             return PostState.ACTIVE;
