@@ -55,6 +55,7 @@ public class CommentService {
     /**
      * Delete a comment and its replies (cascade delete)
      */
+    @SuppressWarnings("null")
     public void deleteComment(String commentId) {
         Optional<Comment> commentOpt = commentRepository.findById(commentId);
         if (commentOpt.isEmpty()) {

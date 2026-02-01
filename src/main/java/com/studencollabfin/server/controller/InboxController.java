@@ -82,6 +82,7 @@ public class InboxController {
      * @return The updated Inbox item
      */
     @PatchMapping("/{id}/read")
+    @SuppressWarnings("null")
     public ResponseEntity<Inbox> markAsRead(
             @PathVariable String id) {
         System.out.println("📬 InboxController.markAsRead called for inbox item: " + id);
@@ -110,6 +111,7 @@ public class InboxController {
      * @return 204 No Content on success
      */
     @DeleteMapping("/{id}")
+    @SuppressWarnings("null")
     public ResponseEntity<?> deleteInboxItem(
             @PathVariable String id) {
         System.out.println("📬 InboxController.deleteInboxItem called for inbox item: " + id);
@@ -135,6 +137,7 @@ public class InboxController {
      * @return Count of deleted items
      */
     @DeleteMapping("/bulk")
+    @SuppressWarnings("null")
     public ResponseEntity<?> deleteBulkInboxItems(
             @RequestBody Map<String, List<String>> body) {
         System.out.println("📬 InboxController.deleteBulkInboxItems called");

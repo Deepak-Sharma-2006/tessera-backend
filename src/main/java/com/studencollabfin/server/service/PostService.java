@@ -177,7 +177,11 @@ public class PostService {
                 try {
                     System.out.println("Creating CollabPod for LOOKING_FOR post: " + social.getId());
                     CollabPod pod = new CollabPod();
-                    pod.setName(social.getTitle() != null ? social.getTitle() : "Looking for collaborators");
+                    // ✅ Use podName if provided, otherwise fall back to title, then default message
+                    String podDisplayName = social.getPodName() != null && !social.getPodName().isEmpty()
+                            ? social.getPodName()
+                            : (social.getTitle() != null ? social.getTitle() : "Looking for collaborators");
+                    pod.setName(podDisplayName);
                     pod.setDescription(social.getContent());
                     pod.setMaxCapacity(6);
                     pod.setTopics(social.getRequiredSkills() != null ? social.getRequiredSkills()
@@ -186,6 +190,7 @@ public class PostService {
                     pod.setStatus(CollabPod.PodStatus.ACTIVE);
                     pod.setScope(com.studencollabfin.server.model.PodScope.CAMPUS);
                     pod.setLinkedPostId(social.getId()); // Set bi-directional link
+                    pod.setPodSource(CollabPod.PodSource.COLLAB_POD); // ✅ Mark as COLLAB_POD (not TEAM_POD)
                     System.out.println("📌 Pod linkedPostId set to: " + social.getId());
 
                     CollabPod createdPod = collabPodService.createPod(authorId, pod);
@@ -206,7 +211,11 @@ public class PostService {
                 try {
                     System.out.println("Creating CollabPod for COLLAB post: " + social.getId());
                     CollabPod pod = new CollabPod();
-                    pod.setName(social.getTitle() != null ? social.getTitle() : "Collab Room");
+                    // ✅ Use podName if provided, otherwise fall back to title, then default message
+                    String podDisplayName = social.getPodName() != null && !social.getPodName().isEmpty()
+                            ? social.getPodName()
+                            : (social.getTitle() != null ? social.getTitle() : "Collab Room");
+                    pod.setName(podDisplayName);
                     pod.setDescription(social.getContent());
                     pod.setMaxCapacity(10); // Global rooms can accommodate more
                     pod.setTopics(social.getRequiredSkills() != null ? social.getRequiredSkills()
@@ -216,7 +225,8 @@ public class PostService {
                     pod.setStatus(CollabPod.PodStatus.ACTIVE);
                     pod.setScope(com.studencollabfin.server.model.PodScope.GLOBAL);
                     pod.setLinkedPostId(social.getId()); // Set bi-directional link
-                    System.out.println("Pod created with scope=GLOBAL, type=COLLAB");
+                    pod.setPodSource(CollabPod.PodSource.COLLAB_ROOM); // ✅ Mark as COLLAB_ROOM (global collaboration)
+                    System.out.println("Pod created with scope=GLOBAL, type=COLLAB, podSource=COLLAB_ROOM");
 
                     CollabPod createdPod = collabPodService.createPod(authorId, pod);
                     System.out.println("CollabPod successfully created with ID: " + createdPod.getId());
@@ -231,33 +241,19 @@ public class PostService {
         } else if (savedPost instanceof TeamFindingPost) {
             TeamFindingPost teamPost = (TeamFindingPost) savedPost;
             try {
-                System.out.println("Creating CollabPod for TeamFindingPost: " + teamPost.getId());
-                CollabPod pod = new CollabPod();
-                // Use title if available, otherwise fall back to content
-                pod.setName(teamPost.getTitle() != null ? teamPost.getTitle()
-                        : (teamPost.getContent() != null ? teamPost.getContent() : "Looking for collaborators"));
-                pod.setDescription(teamPost.getContent());
-                pod.setMaxCapacity(6);
-                pod.setTopics(teamPost.getRequiredSkills() != null ? teamPost.getRequiredSkills()
-                        : new java.util.ArrayList<>());
-                pod.setType(CollabPod.PodType.PROJECT_TEAM);
-                pod.setStatus(CollabPod.PodStatus.ACTIVE);
-                pod.setScope(com.studencollabfin.server.model.PodScope.CAMPUS);
-                pod.setLinkedPostId(teamPost.getId()); // Set bi-directional link
-                System.out.println("Pod created with scope=CAMPUS, type=PROJECT_TEAM");
+                // ✅ FIX #1: DO NOT create CollabPod immediately for TeamFindingPost
+                // Pods should ONLY be created when the post expires (via generateTeamPod())
+                // This allows the post to exist and accept applications BEFORE forming the team
 
-                CollabPod createdPod = collabPodService.createPod(authorId, pod);
-                System.out.println("CollabPod successfully created with ID: " + createdPod.getId());
-                teamPost.setLinkedPodId(createdPod.getId());
-                savedPost = postRepository.save(teamPost); // Save the updated post and return it
-                System.out.println("TeamFindingPost saved with linkedPodId: " + createdPod.getId());
+                System.out.println("✅ TeamFindingPost created without immediate pod: " + teamPost.getId());
+                System.out.println("   Pod will be generated when post expires or is finalized");
 
                 // ✅ NEW: Refresh event stats when team post is created
                 if (teamPost.getEventId() != null && !teamPost.getEventId().isEmpty()) {
                     eventService.refreshEventStats(teamPost.getEventId());
                 }
             } catch (Exception ex) {
-                System.err.println("Failed to create CollabPod during team post creation: " + ex.getMessage());
+                System.err.println("Failed to process TeamFindingPost: " + ex.getMessage());
                 ex.printStackTrace();
             }
         }
@@ -334,6 +330,7 @@ public class PostService {
             social.getCommentIds().add(savedComment.getId());
         } else {
             // Reply - update parent comment's replyIds ONLY
+            @SuppressWarnings("null")
             Comment parentComment = commentRepository.findById(req.getParentId()).orElse(null);
             if (parentComment != null) {
                 if (parentComment.getReplyIds() == null) {

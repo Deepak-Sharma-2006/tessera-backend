@@ -17,12 +17,6 @@ import java.time.LocalDateTime;
 
 @Service
 public class UserService implements UserDetailsService {
-    @SuppressWarnings("null")
-    public User getUserById(String userId) {
-        return userRepository.findById((String) userId)
-                .orElseThrow(() -> new RuntimeException("User not found with ID: " + userId));
-    }
-
     @Autowired
     private UserRepository userRepository;
 
@@ -61,8 +55,15 @@ public class UserService implements UserDetailsService {
 
     @SuppressWarnings("null")
     public User findById(String userId) {
-        return userRepository.findById((String) userId)
+        return userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found with ID: " + userId));
+    }
+
+    @SuppressWarnings("null")
+    public User getUserById(String userId) {
+        // Return null instead of throwing exception to allow graceful fallback in
+        // controller
+        return userRepository.findById(userId).orElse(null);
     }
 
     // XP constants
@@ -75,7 +76,7 @@ public class UserService implements UserDetailsService {
 
     @SuppressWarnings("null")
     public void awardXP(String userId, int xpAmount) {
-        User user = userRepository.findById((String) userId)
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         int newXP = user.getXp() + xpAmount;
@@ -98,7 +99,7 @@ public class UserService implements UserDetailsService {
 
     @SuppressWarnings("null")
     public User updateUserProfile(String userId, User profileData) {
-        User existingUser = userRepository.findById((String) userId)
+        User existingUser = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         // Update only the allowed fields

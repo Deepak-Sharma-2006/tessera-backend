@@ -84,6 +84,7 @@ public class UserController {
     }
 
     @PostMapping("/{userId}/grant-catalyst")
+    @SuppressWarnings("null")
     public ResponseEntity<?> grantCatalyst(@PathVariable String userId,
             @RequestHeader(value = "X-User-Id", required = false) String currentUserId) {
         try {
@@ -147,6 +148,7 @@ public class UserController {
     }
 
     @PostMapping("/{userId}/activate-dev")
+    @SuppressWarnings("null")
     public ResponseEntity<?> activateDevForUser(@PathVariable String userId) {
         try {
             // Get user and set isDev to true
@@ -176,6 +178,7 @@ public class UserController {
 
     // Update Profile - Dynamic Synergy Profile Updates
     @PutMapping("/{userId}/profile")
+    @SuppressWarnings("null")
     public ResponseEntity<User> updateProfile(@PathVariable String userId, @RequestBody User updates) {
         try {
             User user = userRepository.findById(userId)
@@ -214,6 +217,7 @@ public class UserController {
 
     // Endorse User - Skill Endorsement System
     @PostMapping("/{userId}/endorse")
+    @SuppressWarnings("null")
     public ResponseEntity<User> endorseUser(@PathVariable String userId) {
         try {
             User user = userRepository.findById(userId)
@@ -244,6 +248,7 @@ public class UserController {
      * attributes
      */
     @PostMapping("/{userId}/sync-badges")
+    @SuppressWarnings("null")
     public ResponseEntity<?> syncBadges(@PathVariable String userId) {
         try {
             User user = userRepository.findById(userId)
@@ -262,6 +267,7 @@ public class UserController {
     // ============ BADGE DISPLAY MANAGEMENT ============
 
     @PostMapping("/{userId}/displayed-badges")
+    @SuppressWarnings("null")
     public ResponseEntity<?> updateDisplayedBadges(@PathVariable String userId,
             @RequestBody Map<String, List<String>> request) {
         try {

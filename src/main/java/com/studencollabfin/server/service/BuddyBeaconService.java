@@ -4,6 +4,7 @@ import com.studencollabfin.server.model.*;
 import com.studencollabfin.server.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.scheduling.annotation.Scheduled;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -21,8 +22,6 @@ public class BuddyBeaconService {
     private InboxRepository inboxRepository;
     @Autowired
     private CollabPodRepository collabPodRepository;
-    @Autowired
-    private EventService eventService;
 
     // --- Beacon Post Logic ---
     public BuddyBeacon createBeaconPost(String userId, BuddyBeacon beaconPost) {
@@ -42,6 +41,7 @@ public class BuddyBeaconService {
      * ✅ Campus Isolation: Only returns posts from the current user's college.
      * TeamFindingPosts are included if ACTIVE or CLOSED (<24h old).
      */
+    @SuppressWarnings("null")
     public List<Map<String, Object>> getAllBeaconPosts(String currentUserId, String userCollege) {
         List<Map<String, Object>> feed = new ArrayList<>();
 
@@ -562,5 +562,184 @@ public class BuddyBeaconService {
             }
         }
         throw new RuntimeException("Post not found");
+    }
+
+    /**
+     * ✅ FIX #3: Generate Team Pod from expired TeamFindingPost/BuddyBeaconPost
+     * 
+     * This method is called ONLY when a post expires. It:
+     * 1. Fetches the original post (TeamFindingPost or BuddyBeaconPost)
+     * 2. Collects all accepted applicants/current team members
+     * 3. Creates a CollabPod with type=TEAM_POD and podSource=TEAM_POD
+     * 4. Links the post to the new pod via linkedPodId
+     * 5. Updates the post status to reflect the team has been formed
+     * 
+     * @param postId The ID of the expired post
+     * @return The newly created CollabPod
+     */
+    public CollabPod generateTeamPod(String postId) {
+        System.out.println("🚀 generateTeamPod called for post: " + postId);
+
+        // Step 1: Check if it's a BuddyBeaconPost
+        Optional<BuddyBeacon> beaconOpt = beaconRepository.findById(postId);
+        if (beaconOpt.isPresent()) {
+            BuddyBeacon beacon = beaconOpt.get();
+
+            System.out.println("📋 Generating Team Pod from BuddyBeaconPost");
+
+            // Create the Team Pod
+            CollabPod teamPod = new CollabPod();
+            teamPod.setName(beacon.getTitle() != null ? beacon.getTitle() : "Team Pod");
+            teamPod.setDescription(beacon.getDescription());
+            teamPod.setMaxCapacity(beacon.getMaxTeamSize() > 0 ? beacon.getMaxTeamSize() : 6);
+            teamPod.setTopics(beacon.getRequiredSkills());
+            teamPod.setType(CollabPod.PodType.TEAM); // Team pods have type TEAM
+            teamPod.setPodSource(CollabPod.PodSource.TEAM_POD); // ✅ Mark source as TEAM_POD
+            teamPod.setStatus(CollabPod.PodStatus.ACTIVE);
+            teamPod.setScope(com.studencollabfin.server.model.PodScope.CAMPUS);
+            teamPod.setLinkedPostId(postId);
+
+            // Add all current team members
+            if (beacon.getCurrentTeamMemberIds() != null && !beacon.getCurrentTeamMemberIds().isEmpty()) {
+                teamPod.setMemberIds(new ArrayList<>(beacon.getCurrentTeamMemberIds()));
+                System.out.println("👥 Added " + beacon.getCurrentTeamMemberIds().size() + " team members to pod");
+            }
+
+            // Create pod in database
+            CollabPod savedPod = collabPodRepository.save(teamPod);
+            System.out.println("✅ Team Pod created with ID: " + savedPod.getId());
+
+            // Update the post with the pod link and status
+            beacon.setStatus("CLOSED"); // Post is now closed, team has been formed
+            beaconRepository.save(beacon);
+            System.out.println("✅ BuddyBeacon updated with status CLOSED");
+
+            return savedPod;
+        }
+
+        // Step 2: Check if it's a TeamFindingPost
+        Optional<Post> postOpt = postRepository.findById(postId);
+        if (postOpt.isPresent() && postOpt.get() instanceof TeamFindingPost) {
+            TeamFindingPost teamPost = (TeamFindingPost) postOpt.get();
+
+            System.out.println("📋 Generating Team Pod from TeamFindingPost");
+
+            // Create the Team Pod
+            CollabPod teamPod = new CollabPod();
+            teamPod.setName(teamPost.getTitle() != null ? teamPost.getTitle() : "Team Pod");
+            teamPod.setDescription(teamPost.getContent());
+            teamPod.setMaxCapacity(6);
+            teamPod.setTopics(teamPost.getRequiredSkills());
+            teamPod.setType(CollabPod.PodType.TEAM); // Team pods have type TEAM
+            teamPod.setPodSource(CollabPod.PodSource.TEAM_POD); // ✅ Mark source as TEAM_POD
+            teamPod.setStatus(CollabPod.PodStatus.ACTIVE);
+            teamPod.setScope(com.studencollabfin.server.model.PodScope.CAMPUS);
+            teamPod.setLinkedPostId(postId);
+
+            // Add author as owner
+            teamPod.setOwnerId(teamPost.getAuthorId());
+            @SuppressWarnings("null")
+            Optional<User> authorOpt = userRepository.findById(teamPost.getAuthorId());
+            if (authorOpt.isPresent()) {
+                teamPod.setOwnerName(authorOpt.get().getFullName());
+            }
+
+            // Add all current team members (from TeamFindingPost.currentTeamMembers)
+            List<String> members = new ArrayList<>();
+            members.add(teamPost.getAuthorId()); // Owner is also a member
+            if (teamPost.getCurrentTeamMemberIds() != null && !teamPost.getCurrentTeamMemberIds().isEmpty()) {
+                members.addAll(teamPost.getCurrentTeamMemberIds());
+            }
+            teamPod.setMemberIds(members);
+            System.out.println("👥 Added " + members.size() + " members (including author) to pod");
+
+            // Create pod in database
+            CollabPod savedPod = collabPodRepository.save(teamPod);
+            System.out.println("✅ Team Pod created with ID: " + savedPod.getId());
+
+            // Update the post with the pod link and status
+            teamPost.setLinkedPodId(savedPod.getId());
+            teamPost.setStatus("CLOSED"); // Post is now closed, team has been formed
+            postRepository.save(teamPost);
+            System.out.println("✅ TeamFindingPost updated with linkedPodId: " + savedPod.getId());
+
+            return savedPod;
+        }
+
+        throw new RuntimeException("Post not found or not eligible for team generation: " + postId);
+    }
+
+    /**
+     * ✅ Scheduled task that runs every minute to generate Team Pods for expired
+     * posts
+     * 
+     * Logic:
+     * 1. Find all BuddyBeacon posts that are expired (created > 24 hours ago)
+     * 2. For each expired beacon:
+     * - Check if it already has a pod (check status or check linkedPodId field)
+     * - If not, call generateTeamPod() to create a Team Pod with current members
+     * 3. Find all TeamFindingPost posts that are expired
+     * 4. For each expired TeamFindingPost:
+     * - Check if it already has a pod (check linkedPodId)
+     * - If not, call generateTeamPod() to create a Team Pod
+     */
+    @Scheduled(cron = "0 * * * * *") // Every minute
+    public void generatePodsForExpiredPosts() {
+        System.out.println("🔄 [PodGeneration] Starting scheduled pod generation for expired posts...");
+
+        try {
+            // Calculate 24-hour cutoff
+            LocalDateTime expiryThreshold = LocalDateTime.now().minusHours(24);
+
+            // Process expired BuddyBeacon posts
+            List<BuddyBeacon> allBeacons = beaconRepository.findAll();
+            for (BuddyBeacon beacon : allBeacons) {
+                // Check if beacon is expired and doesn't have a pod yet
+                if (beacon.getCreatedAt() != null &&
+                        beacon.getCreatedAt().isBefore(expiryThreshold) &&
+                        !"CLOSED".equals(beacon.getStatus())) {
+                    try {
+                        System.out
+                                .println("⏰ [PodGeneration] Generating pod for expired BuddyBeacon: " + beacon.getId());
+                        generateTeamPod(beacon.getId());
+                        System.out
+                                .println("✅ [PodGeneration] Successfully generated pod for beacon: " + beacon.getId());
+                    } catch (Exception e) {
+                        System.err.println("❌ [PodGeneration] Failed to generate pod for beacon: " + beacon.getId());
+                        e.printStackTrace();
+                    }
+                }
+            }
+
+            // Process expired TeamFindingPost posts
+            List<Post> allPosts = postRepository.findAll();
+            for (Post post : allPosts) {
+                if (post instanceof TeamFindingPost) {
+                    TeamFindingPost teamPost = (TeamFindingPost) post;
+
+                    // Check if TeamFindingPost is expired and doesn't have a pod yet
+                    if (teamPost.getCreatedAt() != null &&
+                            teamPost.getCreatedAt().isBefore(expiryThreshold) &&
+                            teamPost.getLinkedPodId() == null) {
+                        try {
+                            System.out.println("⏰ [PodGeneration] Generating pod for expired TeamFindingPost: "
+                                    + teamPost.getId());
+                            generateTeamPod(teamPost.getId());
+                            System.out.println("✅ [PodGeneration] Successfully generated pod for TeamFindingPost: "
+                                    + teamPost.getId());
+                        } catch (Exception e) {
+                            System.err.println("❌ [PodGeneration] Failed to generate pod for TeamFindingPost: "
+                                    + teamPost.getId());
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }
+
+            System.out.println("✅ [PodGeneration] Scheduled pod generation completed");
+        } catch (Exception e) {
+            System.err.println("❌ [PodGeneration] Unexpected error during scheduled pod generation");
+            e.printStackTrace();
+        }
     }
 }

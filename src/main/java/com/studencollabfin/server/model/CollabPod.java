@@ -48,6 +48,9 @@ public class CollabPod {
     private List<String> applicants; // Users who have applied to join this pod
     private String linkedPostId; // For GLOBAL pods: reference to the original COLLAB post
 
+    // ✅ NEW: Pod Source tracking (distinguishes Team Pods from Collab Pods)
+    private PodSource podSource; // TEAM_POD | COLLAB_POD | COLLAB_ROOM
+
     @Data
     public static class Meeting {
         private String id;
@@ -84,6 +87,13 @@ public class CollabPod {
         IN_PROGRESS,
         COMPLETED,
         CANCELLED
+    }
+
+    // ✅ NEW: Pod Source Enum - Track the origin of pods
+    public enum PodSource {
+        TEAM_POD, // Created when TeamFindingPost/BuddyBeaconPost expires (team formation)
+        COLLAB_POD, // Created from LOOKING_FOR posts in Campus Hub
+        COLLAB_ROOM // Created from COLLAB posts in Inter Hub (global)
     }
 
     /**

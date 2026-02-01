@@ -3,10 +3,8 @@ package com.studencollabfin.server.model;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.springframework.data.mongodb.core.mapping.Document;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -22,4 +20,7 @@ public class SocialPost extends Post {
     // Optional fields for linking to created pods or listing required skills
     private String linkedPodId;
     private List<String> requiredSkills = new ArrayList<>();
+
+    // ✅ NEW: Pod name (for LOOKING_FOR posts, separate from post title)
+    private String podName;
 }

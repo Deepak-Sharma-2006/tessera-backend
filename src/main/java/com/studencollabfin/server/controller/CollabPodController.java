@@ -3,10 +3,8 @@ package com.studencollabfin.server.controller;
 import com.studencollabfin.server.model.CollabPod;
 import com.studencollabfin.server.model.Message;
 import com.studencollabfin.server.model.PodScope;
-import com.studencollabfin.server.model.XPAction;
 import com.studencollabfin.server.repository.CollabPodRepository;
 import com.studencollabfin.server.service.CollabPodService;
-import com.studencollabfin.server.service.GamificationService;
 import com.studencollabfin.server.service.UserService;
 import com.studencollabfin.server.exception.PermissionDeniedException;
 import com.studencollabfin.server.exception.CooldownException;
@@ -35,14 +33,12 @@ public class CollabPodController {
 
     private final CollabPodRepository collabPodRepository;
     private final CollabPodService collabPodService;
-    private final GamificationService gamificationService;
     private final UserService userService;
 
     public CollabPodController(CollabPodRepository collabPodRepository, CollabPodService collabPodService,
-            GamificationService gamificationService, UserService userService) {
+            UserService userService) {
         this.collabPodRepository = collabPodRepository;
         this.collabPodService = collabPodService;
-        this.gamificationService = gamificationService;
         this.userService = userService;
     }
 

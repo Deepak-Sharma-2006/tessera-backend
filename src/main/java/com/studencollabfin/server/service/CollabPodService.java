@@ -15,7 +15,6 @@ import com.studencollabfin.server.exception.PermissionDeniedException;
 import com.studencollabfin.server.exception.CooldownException;
 import com.studencollabfin.server.exception.BannedFromPodException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
@@ -46,9 +45,6 @@ public class CollabPodService {
     private PodMessageService podMessageService;
 
     @Autowired
-    private MongoTemplate mongoTemplate;
-
-    @Autowired
     private PodCooldownRepository podCooldownRepository;
 
     @Autowired
@@ -60,7 +56,7 @@ public class CollabPodService {
     @SuppressWarnings("null")
     public CollabPod createPod(String creatorId, CollabPod pod) {
         System.out.println("CollabPodService.createPod called with creatorId: " + creatorId);
-        var userOpt = userRepository.findById((String) creatorId);
+        var userOpt = userRepository.findById(creatorId);
         var user = userOpt.orElseThrow(() -> new RuntimeException("User not found"));
 
         pod.setCreatorId(creatorId);
@@ -120,6 +116,7 @@ public class CollabPodService {
     /**
      * Get a pod by ID
      */
+    @SuppressWarnings("null")
     public CollabPod getPodById(String podId) {
         return collabPodRepository.findById(podId)
                 .orElseThrow(() -> new RuntimeException("CollabPod not found: " + podId));
@@ -127,7 +124,7 @@ public class CollabPodService {
 
     @SuppressWarnings("null")
     public CollabPod scheduleMeeting(String podId, String moderatorId, CollabPod.Meeting meeting) {
-        CollabPod pod = collabPodRepository.findById((String) podId)
+        CollabPod pod = collabPodRepository.findById(podId)
                 .orElseThrow(() -> new RuntimeException("CollabPod not found"));
 
         if (!pod.getModeratorIds().contains(moderatorId)) {
@@ -194,7 +191,11 @@ public class CollabPodService {
             } catch (Exception e) {
                 // If any message fails to process, log error and skip it
                 // Don't crash the entire message list
-                System.err.println("❌ Error processing message " + msg.getId() + ": " + e.getMessage());
+                if (msg != null) {
+                    System.err.println("❌ Error processing message " + msg.getId() + ": " + e.getMessage());
+                } else {
+                    System.err.println("❌ Error processing message: " + e.getMessage());
+                }
                 e.printStackTrace();
                 continue;
             }
@@ -382,6 +383,7 @@ public class CollabPodService {
      * @return Updated CollabPod
      * @throws PermissionDeniedException if hierarchy is violated
      */
+    @SuppressWarnings("null")
     public CollabPod kickMember(String podId, String actorId, String targetId, String reason) {
         System.out.println("🚪 KICK: User " + actorId + " attempting to kick " + targetId + " from pod " + podId);
 
@@ -528,6 +530,7 @@ public class CollabPodService {
      * @param userId The user leaving the pod
      * @throws RuntimeException if pod not found or user is owner
      */
+    @SuppressWarnings("null")
     public void leavePod(String podId, String userId) {
         System.out.println("👋 LEAVE: User " + userId + " leaving pod " + podId);
 
@@ -578,7 +581,7 @@ public class CollabPodService {
             System.out.println("  ✓ Pod status changed from FULL to ACTIVE");
         }
 
-        CollabPod updatedPod = collabPodRepository.save(pod);
+        collabPodRepository.save(pod);
         System.out.println("  ✓ Pod saved with user removed");
 
         // Step 6: Create cooldown record (15 minutes)
@@ -645,6 +648,7 @@ public class CollabPodService {
      * @throws RuntimeException if validation fails
      */
     @Transactional
+    @SuppressWarnings("null")
     public CollabPod transferOwnership(String podId, String currentOwnerId, String newOwnerId) {
         System.out.println("🔄 TRANSFER: Pod " + podId + " ownership from " + currentOwnerId + " to " + newOwnerId);
 
@@ -765,6 +769,7 @@ public class CollabPodService {
      * @throws BannedFromPodException if user is banned
      * @throws RuntimeException       if pod is full or not found
      */
+    @SuppressWarnings("null")
     public CollabPod joinPod(String podId, String userId) {
         System.out.println("✋ JOIN: User " + userId + " attempting to join pod " + podId);
 
@@ -857,9 +862,10 @@ public class CollabPodService {
 
         // ✅ SYNC USER BADGES: Ensure all badges are up-to-date after pod join
         try {
+            @SuppressWarnings("null")
             User user = userRepository.findById(userId).orElse(null);
             if (user != null) {
-                User syncedUser = achievementService.syncUserBadges(user);
+                achievementService.syncUserBadges(user);
                 System.out.println("  ✓ Badges synced after pod join");
             }
         } catch (Exception e) {
@@ -1078,6 +1084,7 @@ public class CollabPodService {
     /**
      * Helper method to get user's display name from user ID
      */
+    @SuppressWarnings("null")
     private String getUserName(String userId) {
         try {
             Optional<User> userOpt = userRepository.findById(userId);

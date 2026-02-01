@@ -20,6 +20,7 @@ public class GamificationService {
      * @param userId The ID of the user earning XP
      * @param action The action being rewarded
      */
+    @SuppressWarnings("null")
     public void awardXp(String userId, XPAction action) {
         System.out.println("🎯 [GamificationService] Attempting to award XP - userId: " + userId + ", action: "
                 + action.name() + " (" + action.getPoints() + " points)");
@@ -77,6 +78,7 @@ public class GamificationService {
      * @param userId The ID of the user
      * @return The user's current XP data or null if not found
      */
+    @SuppressWarnings("null")
     public User getXpStatus(String userId) {
         return userRepository.findById(userId).orElse(null);
     }
@@ -87,6 +89,7 @@ public class GamificationService {
      * @param userId     The ID of the user
      * @param multiplier The multiplier value (e.g., 1.5 for 50% bonus)
      */
+    @SuppressWarnings("null")
     public void setXpMultiplier(String userId, double multiplier) {
         userRepository.findById(userId).ifPresent(user -> {
             user.setXpMultiplier(multiplier);

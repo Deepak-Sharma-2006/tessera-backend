@@ -54,37 +54,29 @@ public class AchievementService {
     }
 
     public void unlockAchievement(String userId, String title) {
-        achievementRepository.findByUserIdAndTitle(userId, title).ifPresent(achievement -> {
-            if (!achievement.isUnlocked()) {
-                achievement.setUnlocked(true);
-                achievement.setUnlockedAt(LocalDateTime.now());
-                achievementRepository.save(achievement);
+        @SuppressWarnings("null")
+        Achievement achievement = achievementRepository.findByUserIdAndTitle(userId, title).orElse(null);
+        if (achievement != null && !achievement.isUnlocked()) {
+            achievement.setUnlocked(true);
+            achievement.setUnlockedAt(LocalDateTime.now());
+            achievementRepository.save(achievement);
 
-                // ✅ CRITICAL: Also add badge to user.badges array in MongoDB so frontend can
-                // check it
-                userRepository.findById(userId).ifPresent(user -> {
-                    if (user.getBadges() == null) {
-                        user.setBadges(new ArrayList<>());
-                    }
-                    if (!user.getBadges().contains(title)) {
-                        user.getBadges().add(title);
-                        userRepository.save(user);
-                    }
-                });
-
-                notificationService.notifyUser(userId, Map.of("type", "ACHIEVEMENT_UNLOCKED", "title", title));
+            // ✅ CRITICAL: Also add badge to user.badges array in MongoDB so frontend can
+            // check it
+            @SuppressWarnings("null")
+            User user = userRepository.findById(userId).orElse(null);
+            if (user != null) {
+                if (user.getBadges() == null) {
+                    user.setBadges(new ArrayList<>());
+                }
+                if (!user.getBadges().contains(title)) {
+                    user.getBadges().add(title);
+                    userRepository.save(user);
+                }
             }
-        });
-    }
 
-    private boolean isProfileComplete(User user) {
-        return user.getFullName() != null && !user.getFullName().isEmpty() &&
-                user.getCollegeName() != null && !user.getCollegeName().isEmpty() &&
-                user.getYearOfStudy() != null && !user.getYearOfStudy().isEmpty() &&
-                user.getDepartment() != null && !user.getDepartment().isEmpty() &&
-                user.getSkills() != null && !user.getSkills().isEmpty() &&
-                user.getRolesOpenTo() != null && !user.getRolesOpenTo().isEmpty() &&
-                user.getGoals() != null && !user.getGoals().isEmpty();
+            notificationService.notifyUser(userId, Map.of("type", "ACHIEVEMENT_UNLOCKED", "title", title));
+        }
     }
 
     public List<Achievement> getUserAchievements(String userId) {
