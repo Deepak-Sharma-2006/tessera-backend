@@ -1,6 +1,5 @@
 package com.studencollabfin.server.model;
 
-import com.fasterxml.jackson.annotation.JsonFormat; // <-- Add this import
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -24,10 +23,6 @@ public class BuddyBeacon {
     private String status;
     private List<String> applicants; // For tracking users who applied to this beacon
     private List<Map<String, Object>> applicantObjects; // ✅ FEATURE: Full applicant data with profiles
-
-    // Add this annotation to handle the date format correctly
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
-    private LocalDateTime expiresAt;
 
     private LocalDateTime createdAt;
 

@@ -719,10 +719,20 @@ public class BuddyBeaconService {
                 if (post instanceof TeamFindingPost) {
                     TeamFindingPost teamPost = (TeamFindingPost) post;
 
+                    // ✅ NEW: Check expiry using expiresAt if set, otherwise use default 24h logic
+                    boolean isExpired = false;
+                    LocalDateTime now = LocalDateTime.now();
+                    
+                    if (teamPost.getExpiresAt() != null) {
+                        // Use manually set expiresAt (allows testing via DB edits)
+                        isExpired = now.isAfter(teamPost.getExpiresAt());
+                    } else if (teamPost.getCreatedAt() != null) {
+                        // Fall back to default 24h from creation
+                        isExpired = teamPost.getCreatedAt().isBefore(expiryThreshold);
+                    }
+
                     // Check if TeamFindingPost is expired and doesn't have a pod yet
-                    if (teamPost.getCreatedAt() != null &&
-                            teamPost.getCreatedAt().isBefore(expiryThreshold) &&
-                            teamPost.getLinkedPodId() == null) {
+                    if (isExpired && teamPost.getLinkedPodId() == null) {
                         try {
                             System.out.println("⏰ [PodGeneration] Generating pod for expired TeamFindingPost: "
                                     + teamPost.getId());

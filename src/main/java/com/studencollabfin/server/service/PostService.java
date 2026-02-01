@@ -123,6 +123,13 @@ public class PostService {
         post.setAuthorId(authorId);
         post.setCreatedAt(LocalDateTime.now());
 
+        // ✅ NEW: Auto-calculate expiresAt for TeamFindingPost (24h from creation)
+        if (post instanceof TeamFindingPost) {
+            TeamFindingPost teamPost = (TeamFindingPost) post;
+            teamPost.setExpiresAt(LocalDateTime.now().plusHours(24));
+            System.out.println("✅ TeamFindingPost expiry set to: " + teamPost.getExpiresAt());
+        }
+
         // ✅ Campus Isolation: Fetch author and set college
         try {
             com.studencollabfin.server.model.User author = userService.getUserById(authorId);
