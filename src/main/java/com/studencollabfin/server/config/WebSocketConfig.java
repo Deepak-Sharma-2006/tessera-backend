@@ -25,5 +25,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registry.addEndpoint("/ws-studcollab")
                 .setAllowedOriginPatterns("*")
                 .withSockJS();
+        registry.addEndpoint("/ws-studcollab-mobile")
+                .setAllowedOriginPatterns("*");
     }
 }
