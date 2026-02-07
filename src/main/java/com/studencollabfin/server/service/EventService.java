@@ -1,12 +1,15 @@
 package com.studencollabfin.server.service;
 
 import com.studencollabfin.server.dto.CreateEventRequest;
+import com.studencollabfin.server.dto.EventNotificationDTO;
 import com.studencollabfin.server.model.CollabPod;
 import com.studencollabfin.server.model.Event;
 import com.studencollabfin.server.model.TeamFindingPost;
+import com.studencollabfin.server.model.User;
 import com.studencollabfin.server.repository.CollabPodRepository;
 import com.studencollabfin.server.repository.EventRepository;
 import com.studencollabfin.server.repository.PostRepository;
+import com.studencollabfin.server.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +25,8 @@ public class EventService {
     private final EventRepository eventRepository;
     private final PostRepository postRepository;
     private final CollabPodRepository collabPodRepository;
+    private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     public List<Event> getAllEvents() {
         return eventRepository.findAll();
@@ -97,7 +102,57 @@ public class EventService {
         newEvent.setType(Event.EventType.OTHER);
 
         // Save the new event to the database
-        return eventRepository.save(newEvent);
+        Event savedEvent = eventRepository.save(newEvent);
+
+        // ✅ NEW: TRIGGER EVENT NOTIFICATION to all users
+        triggerEventNotification(savedEvent);
+
+        return savedEvent;
+    }
+
+    /**
+     * ✅ NEW: Trigger event notification broadcast
+     * 
+     * 1. Get all users from the system
+     * 2. Create EventNotificationDTO with event details
+     * 3. Broadcast via NotificationService (WebSocket + Inbox storage)
+     * 4. Only triggers on event creation, NOT on update
+     */
+    private void triggerEventNotification(Event event) {
+        try {
+            // Get all users to notify
+            List<User> allUsers = userRepository.findAll();
+            List<String> allUserIds = allUsers.stream()
+                    .map(User::getId)
+                    .collect(Collectors.toList());
+
+            if (allUserIds.isEmpty()) {
+                System.out.println("⚠️  No users to notify for event: " + event.getTitle());
+                return;
+            }
+
+            // Create event notification DTO
+            EventNotificationDTO notification = new EventNotificationDTO();
+            notification.setEventId(event.getId());
+            notification.setEventTitle(event.getTitle());
+            notification.setEventCategory(event.getCategory());
+            notification.setEventDescription(event.getDescription());
+            notification.setSender("Tessera Events");
+            notification
+                    .setMessage("New Event Added: " + event.getTitle() + ". Check the Events Hub for more details.");
+            notification.setNotificationType("NEW_EVENT");
+            notification.setTimestamp(System.currentTimeMillis());
+            notification.setIcon("📅");
+
+            // Broadcast to all users
+            notificationService.broadcastEventNotification(notification, allUserIds);
+
+            System.out.println("✅ Event notification broadcast for: " + event.getTitle());
+        } catch (Exception e) {
+            System.err.println("❌ Error broadcasting event notification: " + e.getMessage());
+            e.printStackTrace();
+            // Don't fail event creation if notification fails
+        }
     }
 
     @SuppressWarnings("null")

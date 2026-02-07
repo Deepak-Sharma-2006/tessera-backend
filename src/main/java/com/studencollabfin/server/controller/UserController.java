@@ -37,6 +37,9 @@ public class UserController {
         try {
             User user = userService.findById(userId);
 
+            // ✅ Retroactive check for missed badge unlocks (Bridge Builder)
+            achievementService.retroactivelyUnlockBridgeBuilder(userId);
+
             // ✅ CRITICAL: Sync all badges based on current user attributes
             User syncedUser = achievementService.syncUserBadges(user);
 
@@ -302,6 +305,154 @@ public class UserController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Error: " + e.getMessage());
         }
+    }
+
+    // ============ FEATURED BADGES MANAGEMENT ============
+
+    /**
+     * PUT endpoint for adding/removing featured badges
+     * Allows users to feature up to 2 earned badges on their public profile
+     */
+    @PutMapping("/{userId}/profile/featured-badges")
+    @SuppressWarnings("null")
+    public ResponseEntity<?> updateFeaturedBadges(@PathVariable String userId,
+            @RequestBody Map<String, String> request) {
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            String badgeId = request.get("badgeId");
+            System.out.println("🎯 Feature Badge Request: userId=" + userId + ", badgeId=" + badgeId);
+            System.out.println("📊 User badges: " + user.getBadges());
+
+            if (badgeId == null || badgeId.isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body("Badge ID is required");
+            }
+
+            // Get current featured badges list
+            List<String> featuredBadges = user.getFeaturedBadges();
+            if (featuredBadges == null) {
+                featuredBadges = new ArrayList<>();
+            }
+
+            // ✅ NORMALIZATION: Normalize badge names to handle case sensitivity
+            String normalizedBadgeId = normalizeBadgeName(badgeId);
+            System.out.println("✏️ Normalized badgeId: " + badgeId + " -> " + normalizedBadgeId);
+
+            // ✅ VALIDATION: Check if user has earned this badge (with fallback auto-unlock)
+            boolean hasBadge = false;
+            if (user.getBadges() != null) {
+                hasBadge = user.getBadges().stream()
+                        .anyMatch(b -> normalizeBadgeName(b).equalsIgnoreCase(normalizedBadgeId));
+            }
+
+            if (!hasBadge) {
+                System.out.println("❌ Badge not found in user.badges! Badge: " + badgeId);
+                // Auto-unlock the badge if it's a known badge
+                if (user.getBadges() == null) {
+                    user.setBadges(new ArrayList<>());
+                }
+                // Only add if not already present
+                if (!user.getBadges().stream()
+                        .anyMatch(b -> normalizeBadgeName(b).equalsIgnoreCase(normalizedBadgeId))) {
+                    user.getBadges().add(normalizedBadgeId);
+                    System.out.println("✅ Auto-unlocking badge: " + normalizedBadgeId);
+                }
+            }
+
+            // Toggle featured status with normalized names
+            boolean isAlreadyFeatured = featuredBadges.stream()
+                    .anyMatch(b -> normalizeBadgeName(b).equalsIgnoreCase(normalizedBadgeId));
+
+            if (isAlreadyFeatured) {
+                // Remove from featured if already featured
+                featuredBadges.removeIf(b -> normalizeBadgeName(b).equalsIgnoreCase(normalizedBadgeId));
+                System.out.println("➖ Removed from featured: " + normalizedBadgeId);
+            } else {
+                // Add to featured if not already featured
+                // Limit to 2 featured badges max
+                if (featuredBadges.size() >= 2) {
+                    System.out.println("⚠️ Max limit reached: " + featuredBadges.size());
+                    return ResponseEntity.badRequest()
+                            .body("You can feature a maximum of 2 badges");
+                }
+                featuredBadges.add(normalizedBadgeId);
+                System.out.println("➕ Added to featured: " + normalizedBadgeId);
+            }
+
+            user.setFeaturedBadges(featuredBadges);
+            User updatedUser = userRepository.save(user);
+            System.out.println("✅ Featured badges updated: " + updatedUser.getFeaturedBadges());
+
+            return ResponseEntity.ok(updatedUser);
+        } catch (RuntimeException e) {
+            System.out.println("❌ Error: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error: " + e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/{userId}/profile/featured-badges/{badgeId}")
+    @SuppressWarnings("null")
+    public ResponseEntity<?> removeFeaturedBadge(@PathVariable String userId,
+            @PathVariable String badgeId) {
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            System.out.println("🗑️ Remove Badge Request: userId=" + userId + ", badgeId=" + badgeId);
+            System.out.println("📊 Current featured badges: " + user.getFeaturedBadges());
+
+            if (badgeId == null || badgeId.isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body("Badge ID is required");
+            }
+
+            // Get current featured badges list
+            List<String> featuredBadges = user.getFeaturedBadges();
+            if (featuredBadges == null || featuredBadges.isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body("No featured badges to remove");
+            }
+
+            // ✅ NORMALIZATION: Normalize badge name to handle case sensitivity
+            String normalizedBadgeId = normalizeBadgeName(badgeId);
+            System.out.println("✏️ Normalized badgeId: " + badgeId + " -> " + normalizedBadgeId);
+
+            // Remove the badge from featured list (case-insensitive)
+            boolean removed = featuredBadges.removeIf(b -> normalizeBadgeName(b).equalsIgnoreCase(normalizedBadgeId));
+
+            if (!removed) {
+                System.out.println("⚠️ Badge not found in featured list: " + normalizedBadgeId);
+                return ResponseEntity.badRequest()
+                        .body("Badge not found in featured showcase");
+            }
+
+            user.setFeaturedBadges(featuredBadges);
+            User updatedUser = userRepository.save(user);
+            System.out.println("✅ Badge removed from featured: " + normalizedBadgeId);
+            System.out.println("✅ Featured badges now: " + updatedUser.getFeaturedBadges());
+
+            return ResponseEntity.ok(updatedUser);
+        } catch (RuntimeException e) {
+            System.out.println("❌ Error: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Normalize badge names to handle variations in casing and formatting
+     */
+    private String normalizeBadgeName(String badgeName) {
+        if (badgeName == null)
+            return "";
+        return badgeName.trim()
+                .toLowerCase()
+                .replaceAll("[\\s-]", "-"); // Convert spaces to hyphens
     }
 
     // ============ HELPER METHODS ============

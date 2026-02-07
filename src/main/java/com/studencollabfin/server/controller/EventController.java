@@ -2,9 +2,12 @@ package com.studencollabfin.server.controller;
 
 import com.studencollabfin.server.dto.CreateEventRequest;
 import com.studencollabfin.server.model.Event;
+import com.studencollabfin.server.model.User;
 import com.studencollabfin.server.model.XPAction;
 import com.studencollabfin.server.service.EventService;
 import com.studencollabfin.server.service.GamificationService;
+import com.studencollabfin.server.service.AchievementService;
+import com.studencollabfin.server.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/events")
@@ -21,6 +25,8 @@ public class EventController {
 
     private final EventService eventService;
     private final GamificationService gamificationService;
+    private final AchievementService achievementService;
+    private final UserRepository userRepository;
 
     /**
      * GET /api/events -> Get all events
@@ -78,12 +84,47 @@ public class EventController {
      * POST /api/events -> Create a new event
      * The event data is sent in the request body as JSON matching the
      * CreateEventRequest.
+     * 
+     * ✅ SECURITY: Only users with Founding Dev or Campus Catalyst badges can create
+     * events
      */
     @PostMapping
     public ResponseEntity<Event> createEvent(@RequestBody CreateEventRequest request,
             @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        // TODO: Add security here to ensure only users with a 'MODERATOR' role can
-        // access this endpoint.
+
+        // ✅ BADGE VALIDATION: Ensure user has event creation permission
+        if (userId == null || userId.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(null);
+        }
+
+        Optional<User> userOptional = userRepository.findById(userId);
+        if (!userOptional.isPresent()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(null);
+        }
+
+        User user = userOptional.get();
+
+        // ✅ SYNC BADGES: Ensure user's badges are up-to-date based on current
+        // attributes
+        User syncedUser = achievementService.syncUserBadges(user);
+
+        // Check if user has Founding Dev or Campus Catalyst badge
+        boolean hasFoudingDev = syncedUser.getBadges() != null && syncedUser.getBadges().contains("Founding Dev");
+        boolean hasCampusCatalyst = syncedUser.getBadges() != null
+                && syncedUser.getBadges().contains("Campus Catalyst");
+
+        if (!hasFoudingDev && !hasCampusCatalyst) {
+            System.out.println("[BadgeService] ❌ Event creation blocked: User " + userId + " lacks required badges");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(null);
+        }
+
+        System.out.println("[BadgeService] ✅ Event creation permitted for user " + userId);
+        System.out.println("   Founding Dev: " + hasFoudingDev);
+        System.out.println("   Campus Catalyst: " + hasCampusCatalyst);
+
         Event createdEvent = eventService.createEvent(request);
 
         // 📊 GAMIFICATION: Award XP for creating an event

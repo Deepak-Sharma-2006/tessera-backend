@@ -6,6 +6,7 @@ import com.studencollabfin.server.model.PodScope;
 import com.studencollabfin.server.repository.CollabPodRepository;
 import com.studencollabfin.server.service.CollabPodService;
 import com.studencollabfin.server.service.UserService;
+import com.studencollabfin.server.service.AchievementService;
 import com.studencollabfin.server.exception.PermissionDeniedException;
 import com.studencollabfin.server.exception.CooldownException;
 import com.studencollabfin.server.exception.BannedFromPodException;
@@ -34,12 +35,14 @@ public class CollabPodController {
     private final CollabPodRepository collabPodRepository;
     private final CollabPodService collabPodService;
     private final UserService userService;
+    private final AchievementService achievementService;
 
     public CollabPodController(CollabPodRepository collabPodRepository, CollabPodService collabPodService,
-            UserService userService) {
+            UserService userService, AchievementService achievementService) {
         this.collabPodRepository = collabPodRepository;
         this.collabPodService = collabPodService;
         this.userService = userService;
+        this.achievementService = achievementService;
     }
 
     /**
@@ -255,6 +258,10 @@ public class CollabPodController {
             // Use the enhanced join method that checks cooldown
             try {
                 CollabPod updatedPod = collabPodService.joinPod(id, userId);
+
+                // ✅ Unlock Pod Pioneer badge on first pod join
+                achievementService.onJoinPod(userId);
+
                 return ResponseEntity.ok(java.util.Map.of("message", "Successfully joined pod", "pod", updatedPod));
             } catch (com.studencollabfin.server.exception.CooldownException e) {
                 // Return 429 status for cooldown

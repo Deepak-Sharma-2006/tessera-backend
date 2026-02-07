@@ -2,8 +2,12 @@ package com.studencollabfin.server.service;
 
 import com.studencollabfin.server.model.Achievement;
 import com.studencollabfin.server.model.User;
+import com.studencollabfin.server.model.Conversation;
+import com.studencollabfin.server.model.Message;
 import com.studencollabfin.server.repository.AchievementRepository;
 import com.studencollabfin.server.repository.UserRepository;
+import com.studencollabfin.server.repository.ConversationRepository;
+import com.studencollabfin.server.repository.MessageRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
@@ -19,6 +23,12 @@ public class AchievementService {
     private UserRepository userRepository;
     @Autowired
     private NotificationService notificationService;
+    @Autowired
+    private ConversationRepository conversationRepository;
+    @Autowired
+    private MessageRepository messageRepository;
+    @Autowired(required = false)
+    private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
 
     public void initializeUserAchievements(String userId) {
         // --- Power Five MVP ---
@@ -51,6 +61,12 @@ public class AchievementService {
 
     public void onJoinPod(String userId) {
         unlockAchievement(userId, "Pod Pioneer");
+        System.out.println("[BadgeService] 🌱 Pod Pioneer badge unlocked for user " + userId);
+    }
+
+    public void onInterCollegeMessage(String userId) {
+        unlockAchievement(userId, "Bridge Builder");
+        System.out.println("[BadgeService] 🌉 Bridge Builder badge unlocked for user " + userId);
     }
 
     public void unlockAchievement(String userId, String title) {
@@ -72,6 +88,22 @@ public class AchievementService {
                 if (!user.getBadges().contains(title)) {
                     user.getBadges().add(title);
                     userRepository.save(user);
+
+                    // ✅ REAL-TIME: Broadcast badge unlock via WebSocket
+                    if (messagingTemplate != null) {
+                        try {
+                            messagingTemplate.convertAndSendToUser(
+                                    userId,
+                                    "/queue/badge-unlock",
+                                    Map.of(
+                                            "badgeName", title,
+                                            "message", "🎉 " + title + " badge unlocked!",
+                                            "timestamp", System.currentTimeMillis()));
+                            System.out.println("[BadgeService] ✅ WebSocket broadcast sent for " + title + " unlock");
+                        } catch (Exception e) {
+                            System.err.println("[BadgeService] ⚠️ WebSocket broadcast failed: " + e.getMessage());
+                        }
+                    }
                 }
             }
 
@@ -119,6 +151,9 @@ public class AchievementService {
                 currentBadges.add("Founding Dev");
                 updated = true;
                 System.out.println("   ✅ ACTION: ADDED 'Founding Dev' (isDev=true)");
+                System.out.println(
+                        "   [BadgeService] ✅ Unlocking Founding Dev and granting Event Creation privileges for user "
+                                + user.getId());
             } else {
                 System.out.println("   ℹ️ NO CHANGE: Already has 'Founding Dev'");
             }
@@ -128,6 +163,8 @@ public class AchievementService {
                 currentBadges.remove("Founding Dev");
                 updated = true;
                 System.out.println("   ✅ ACTION: REMOVED 'Founding Dev' (isDev=false)");
+                System.out.println("   [BadgeService] ❌ Revoking Founding Dev and Event Creation privileges for user "
+                        + user.getId());
             }
         }
 
@@ -142,6 +179,9 @@ public class AchievementService {
                 currentBadges.add("Campus Catalyst");
                 updated = true;
                 System.out.println("   ✅ ACTION: ADDED 'Campus Catalyst' (role=COLLEGE_HEAD)");
+                System.out.println(
+                        "   [BadgeService] ✅ Unlocking Campus Catalyst and granting Event Creation privileges for user "
+                                + user.getId());
             } else {
                 System.out.println("   ℹ️ NO CHANGE: Already has 'Campus Catalyst'");
             }
@@ -151,6 +191,9 @@ public class AchievementService {
                 currentBadges.remove("Campus Catalyst");
                 updated = true;
                 System.out.println("   ✅ ACTION: REMOVED 'Campus Catalyst' (role != COLLEGE_HEAD)");
+                System.out
+                        .println("   [BadgeService] ❌ Revoking Campus Catalyst and Event Creation privileges for user "
+                                + user.getId());
             }
         }
 
@@ -211,5 +254,84 @@ public class AchievementService {
             System.out.println();
             return user;
         }
+    }
+
+    /**
+     * ✅ RETROACTIVE BADGE CHECK - Called on login to unlock missed badges
+     * Scans user's conversation history for inter-college messages
+     * and retroactively unlocks Bridge Builder if applicable
+     */
+    public void retroactivelyUnlockBridgeBuilder(String userId) {
+        try {
+            System.out.println("\n🔄 [Login Check] Performing retroactive badge check for " + userId);
+            User user = userRepository.findById(userId).orElse(null);
+
+            if (user == null || user.getBadges().contains("Bridge Builder")) {
+                System.out.println("   ℹ️ User not found or already has Bridge Builder badge");
+                return;
+            }
+
+            String userDomain = extractDomain(user.getEmail());
+            if (userDomain.isEmpty()) {
+                System.out.println("   ⚠️ User email domain not found");
+                return;
+            }
+
+            System.out.println("   Scanning conversations for inter-college messages...");
+            System.out.println("   User domain: " + userDomain);
+
+            // Get all conversations where user is a participant
+            List<Conversation> conversations = conversationRepository.findByParticipantIdsContaining(userId);
+
+            for (Conversation conv : conversations) {
+                List<String> participantIds = conv.getParticipantIds();
+                if (participantIds == null || participantIds.size() < 2) {
+                    continue;
+                }
+
+                // Check if conversation has participants from different domains
+                boolean hasInterCollege = false;
+                for (String participantId : participantIds) {
+                    if (!participantId.equals(userId)) {
+                        User participant = userRepository.findById(participantId).orElse(null);
+                        if (participant != null && participant.getEmail() != null) {
+                            String participantDomain = extractDomain(participant.getEmail());
+                            if (!userDomain.equals(participantDomain)) {
+                                hasInterCollege = true;
+                                System.out.println("   ✅ Found inter-college conversation!");
+                                System.out.println("   User domain: " + userDomain + " ↔️  Participant domain: "
+                                        + participantDomain);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (hasInterCollege) {
+                    // Check if user has ANY messages in this conversation (not just received)
+                    List<Message> userMessages = messageRepository.findByConversationIdAndSenderId(
+                            conv.getId(), userId);
+
+                    if (userMessages != null && !userMessages.isEmpty()) {
+                        System.out.println("   ✅ User has sent messages in inter-college conversation");
+                        System.out.println("[BadgeService] 🌉 RETROACTIVELY UNLOCKING Bridge Builder for " + userId);
+                        onInterCollegeMessage(userId);
+                        return;
+                    }
+                }
+            }
+
+            System.out.println("   ℹ️ No inter-college messages found in history");
+        } catch (Exception e) {
+            System.err.println("❌ Error during retroactive badge check: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private String extractDomain(String email) {
+        if (email == null || !email.contains("@")) {
+            return "";
+        }
+        return email.substring(email.indexOf("@") + 1).toLowerCase();
     }
 }

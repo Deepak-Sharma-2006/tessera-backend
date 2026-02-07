@@ -28,6 +28,7 @@ public class User {
     private List<String> rolesOpenTo; // e.g., ["Full Stack Developer"]
     private List<String> badges = new ArrayList<>(); // Achievement badges earned
     private List<String> displayedBadges = new ArrayList<>(); // Badges selected to display on public profile (max 3)
+    private List<String> featuredBadges = new ArrayList<>(); // Badges featured in the public profile showcase (max 2)
     private int endorsementsCount = 0; // Tracks skill endorsements for Skill Sage badge
     private int postsCount = 0; // Tracks posts created for Signal Guardian badge
     private int level = 0; // Current level in Synergy (starts at 0)

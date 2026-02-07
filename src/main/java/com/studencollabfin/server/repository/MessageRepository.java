@@ -21,6 +21,10 @@ public interface MessageRepository extends MongoRepository<Message, String> {
     // Query methods for filtering by message type
     List<Message> findByMessageTypeOrderBySentAtAsc(String messageType);
 
+    // Query method for finding messages by conversation and sender (retroactive
+    // badge check)
+    List<Message> findByConversationIdAndSenderId(String conversationId, String senderId);
+
     // Delete messages by podId (campus pods)
     void deleteByPodId(String podId);
 

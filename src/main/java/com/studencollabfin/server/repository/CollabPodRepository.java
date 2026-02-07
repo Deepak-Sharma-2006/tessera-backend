@@ -40,4 +40,10 @@ public interface CollabPodRepository extends MongoRepository<CollabPod, String> 
     // ✅ NEW: Check if user is already a member of a pod for this event (double
     // booking prevention)
     boolean existsByEventIdAndMemberIdsContains(String eventId, String userId);
+
+    // Campus stats: Count pods owned by user
+    long countByOwnerId(String ownerId);
+
+    // Campus stats: Count pods where user is member but not owner
+    long countByMemberIdsContainsAndOwnerIdNot(String memberId, String ownerId);
 }

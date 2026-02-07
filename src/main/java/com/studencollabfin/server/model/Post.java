@@ -19,4 +19,7 @@ public abstract class Post {
     @Indexed // ✅ NEW: Index for fast querying by creation time (used for expiry handling)
     private LocalDateTime createdAt;
     private String college; // Denormalized college name for campus isolation (e.g., "IIT", "Sinhgad")
+
+    @Indexed // ✅ Domain-locked institutional isolation: Email domain from author's email
+    private String institutionDomain; // e.g., "sinhgad.edu", "coep.ac.in"
 }

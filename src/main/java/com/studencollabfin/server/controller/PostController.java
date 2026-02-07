@@ -96,6 +96,21 @@ public class PostController {
         return null;
     }
 
+    /**
+     * ✅ DOMAIN-LOCKED INSTITUTIONAL ISOLATION: Extract email domain
+     * Converts "sara@sinhgad.edu" → "sinhgad.edu"
+     * 
+     * @param email The user's email address
+     * @return The domain portion of the email, or empty string if invalid
+     */
+    private String extractDomainFromEmail(String email) {
+        if (email == null || !email.contains("@")) {
+            return "";
+        }
+        String domain = email.substring(email.indexOf("@") + 1).toLowerCase().trim();
+        return domain.isEmpty() ? "" : domain;
+    }
+
     @GetMapping
     public ResponseEntity<List<Object>> getAllPosts(@RequestParam(required = false) String type,
             Authentication authentication, HttpServletRequest request) {
@@ -239,10 +254,45 @@ public class PostController {
 
     // Separate endpoints for Campus Feed posts
     @GetMapping("/campus")
-    public ResponseEntity<List<Object>> getCampusPosts(@RequestParam(required = false) String type) {
+    public ResponseEntity<List<Object>> getCampusPosts(@RequestParam(required = false) String type,
+            Authentication authentication, HttpServletRequest request) {
         try {
-            List<Post> posts = postService.getAllPosts();
-            System.out.println("Total posts from DB: " + posts.size());
+            // ✅ DOMAIN-LOCKED INSTITUTIONAL ISOLATION: Extract user's email domain
+            String userId = getCurrentUserId(authentication, request);
+            String institutionDomain = null;
+
+            if (userId != null && !userId.trim().isEmpty()) {
+                try {
+                    com.studencollabfin.server.model.User currentUser = userService.getUserById(userId);
+                    if (currentUser != null && currentUser.getEmail() != null) {
+                        institutionDomain = extractDomainFromEmail(currentUser.getEmail());
+                        if (institutionDomain != null && !institutionDomain.isEmpty()) {
+                            System.out.println("✅ Campus Feed: User domain authenticated: " + institutionDomain);
+                        } else {
+                            System.err.println(
+                                    "⚠️ Campus Feed: Could not extract domain from email: " + currentUser.getEmail());
+                            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                                    .body(java.util.List.of(java.util.Map.of("error", "User email domain not found")));
+                        }
+                    } else {
+                        System.err.println("⚠️ Campus Feed: User or email not found");
+                        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                                .body(java.util.List.of(java.util.Map.of("error", "User not authenticated")));
+                    }
+                } catch (Exception ex) {
+                    System.err.println("⚠️ Campus Feed: Error fetching user: " + ex.getMessage());
+                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .body(java.util.List.of(java.util.Map.of("error", "Error fetching user")));
+                }
+            } else {
+                System.err.println("⚠️ Campus Feed: No userId found");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(java.util.List.of(java.util.Map.of("error", "User ID not found")));
+            }
+
+            // Fetch posts strictly by institution domain
+            List<Post> posts = postService.getCampusPostsByDomain(institutionDomain);
+            System.out.println("Total campus posts for domain " + institutionDomain + ": " + posts.size());
 
             java.util.List<com.studencollabfin.server.model.PostType> campusTypes = java.util.Arrays.asList(
                     com.studencollabfin.server.model.PostType.ASK_HELP,
@@ -265,7 +315,7 @@ public class PostController {
                     campusPosts.add(post);
                 }
             }
-            System.out.println("Campus posts filtered: " + campusPosts.size());
+            System.out.println("Campus posts filtered by type: " + campusPosts.size());
 
             // Apply type filter if provided
             if (type != null && !type.isBlank()) {
@@ -376,7 +426,8 @@ public class PostController {
     }
 
     @GetMapping("/campus/counts")
-    public ResponseEntity<java.util.Map<String, Long>> getCampusPostCounts() {
+    public ResponseEntity<java.util.Map<String, Long>> getCampusPostCounts(Authentication authentication,
+            HttpServletRequest request) {
         java.util.Map<String, Long> counts = new java.util.HashMap<>();
         java.util.List<com.studencollabfin.server.model.PostType> campusTypes = java.util.Arrays.asList(
                 com.studencollabfin.server.model.PostType.ASK_HELP,
@@ -384,11 +435,47 @@ public class PostController {
                 com.studencollabfin.server.model.PostType.LOOKING_FOR,
                 com.studencollabfin.server.model.PostType.POLL);
 
-        // Get all posts and count by type for campus - filter by CAMPUS category
-        List<Post> allPosts = postService.getAllPosts();
+        // ✅ DOMAIN-LOCKED: Extract user's email domain and fetch posts from same domain
+        // only
+        String userId = getCurrentUserId(authentication, request);
+        String institutionDomain = null;
+
+        if (userId != null && !userId.trim().isEmpty()) {
+            try {
+                com.studencollabfin.server.model.User currentUser = userService.getUserById(userId);
+                if (currentUser != null && currentUser.getEmail() != null) {
+                    institutionDomain = extractDomainFromEmail(currentUser.getEmail());
+                    if (institutionDomain == null || institutionDomain.isEmpty()) {
+                        System.err.println("⚠️ Campus Counts: Could not extract domain from email");
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                                .body(java.util.Map.of());
+                    }
+                } else {
+                    System.err.println("⚠️ Campus Counts: User or email not found");
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                            .body(java.util.Map.of());
+                }
+            } catch (Exception ex) {
+                System.err.println("⚠️ Campus Counts: Error fetching user: " + ex.getMessage());
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(java.util.Map.of());
+            }
+        } else {
+            System.err.println("⚠️ Campus Counts: No userId found");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(java.util.Map.of());
+        }
+
+        // Get posts strictly by institution domain (not all posts)
+        List<Post> allPosts = postService.getCampusPostsByDomain(institutionDomain);
         for (com.studencollabfin.server.model.PostType ptype : campusTypes) {
             long count = 0;
             for (Post post : allPosts) {
+                // ✅ DOMAIN CHECK: Only count posts that belong to this user's institution
+                if (post.getInstitutionDomain() == null || !post.getInstitutionDomain().equals(institutionDomain)) {
+                    continue;
+                }
+
                 if (post instanceof com.studencollabfin.server.model.SocialPost) {
                     com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
                     String category = social.getCategory() != null ? social.getCategory() : "CAMPUS";
@@ -443,13 +530,45 @@ public class PostController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Object> getPostById(@PathVariable String id) {
+    public ResponseEntity<Object> getPostById(@PathVariable String id, Authentication authentication,
+            HttpServletRequest request) {
         try {
             Post post = postService.getPostById(id);
+
+            // ✅ SECURITY LAYER: Verify user's domain matches post's domain (institutional
+            // isolation)
+            String userId = getCurrentUserId(authentication, request);
+            if (userId != null && !userId.trim().isEmpty()) {
+                try {
+                    com.studencollabfin.server.model.User currentUser = userService.getUserById(userId);
+                    if (currentUser != null && currentUser.getEmail() != null && post.getInstitutionDomain() != null) {
+                        String userDomain = extractDomainFromEmail(currentUser.getEmail());
+                        String postDomain = post.getInstitutionDomain();
+
+                        // Cross-domain access denied
+                        if (!userDomain.equals(postDomain)) {
+                            System.err.println("🔒 SECURITY: Cross-domain access DENIED - User domain: " + userDomain
+                                    + ", Post domain: " + postDomain);
+                            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                                    .body(java.util.Map.of("error", "Cross-domain post access denied",
+                                            "userDomain", userDomain,
+                                            "postDomain", postDomain));
+                        }
+                        System.out.println("✅ SECURITY: Domain verification PASSED for user: " + userId
+                                + " accessing post in domain: " + postDomain);
+                    }
+                } catch (Exception ex) {
+                    System.err.println("⚠️ SECURITY: Error verifying domain: " + ex.getMessage());
+                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .body(java.util.Map.of("error", "Error verifying post access"));
+                }
+            }
+
             java.util.Map<String, Object> richPost = new java.util.HashMap<>();
             richPost.put("id", post.getId());
             richPost.put("authorId", post.getAuthorId());
             richPost.put("createdAt", post.getCreatedAt() != null ? post.getCreatedAt().toString() : "");
+            richPost.put("institutionDomain", post.getInstitutionDomain());
             if (post instanceof com.studencollabfin.server.model.SocialPost) {
                 com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
                 richPost.put("title", social.getTitle() != null ? social.getTitle() : "");

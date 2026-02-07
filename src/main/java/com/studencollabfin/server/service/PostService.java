@@ -137,8 +137,18 @@ public class PostService {
                 post.setCollege(author.getCollegeName());
                 System.out.println("✅ Post college set to: " + author.getCollegeName());
             }
+
+            // ✅ DOMAIN-LOCKED INSTITUTIONAL ISOLATION: Extract domain from author's email
+            if (author != null && author.getEmail() != null && !author.getEmail().isEmpty()) {
+                String institutionDomain = extractDomainFromEmail(author.getEmail());
+                post.setInstitutionDomain(institutionDomain);
+                System.out.println("✅ Post institution domain set to: " + institutionDomain + " (from email: "
+                        + author.getEmail() + ")");
+            } else {
+                System.err.println("⚠️ Author email not found for domain extraction");
+            }
         } catch (Exception ex) {
-            System.err.println("⚠️ Failed to fetch author for college assignment: " + ex.getMessage());
+            System.err.println("⚠️ Failed to fetch author for college/domain assignment: " + ex.getMessage());
         }
 
         // If this is a SocialPost, handle both LOOKING_FOR and COLLAB types
@@ -283,6 +293,62 @@ public class PostService {
         return postRepository.findByCollege(userCollegeName);
     }
 
+    /**
+     * ✅ DOMAIN-LOCKED INSTITUTIONAL ISOLATION: Fetch posts by email domain
+     * Ensures strict 1:1 campus silo - student from "sinhgad.edu" never receives
+     * posts from "coep.ac.in"
+     * 
+     * @param institutionDomain The email domain (e.g., "sinhgad.edu", "coep.ac.in")
+     * @return List of posts from the same institution, or empty list if domain is
+     *         invalid
+     */
+    public List<Post> getCampusPostsByDomain(String institutionDomain) {
+        if (institutionDomain == null || institutionDomain.trim().isEmpty()) {
+            System.err.println("⚠️ Institution domain is null/empty, returning empty post list for domain isolation");
+            return new java.util.ArrayList<>();
+        }
+
+        // ✅ FIXED: First try to fetch posts by institutionDomain
+        List<Post> domainPosts = postRepository.findByInstitutionDomain(institutionDomain);
+
+        // ✅ FALLBACK: Also check posts by college (for backward compatibility with old
+        // posts)
+        // Get all posts and filter by author's domain to handle old posts without
+        // institutionDomain
+        List<Post> allPosts = postRepository.findAll();
+        for (Post post : allPosts) {
+            // Skip if already has correct domain
+            if (post.getInstitutionDomain() != null && post.getInstitutionDomain().equals(institutionDomain)) {
+                continue;
+            }
+
+            // For posts missing institutionDomain, fetch author and set it
+            if (post.getInstitutionDomain() == null || post.getInstitutionDomain().isEmpty()) {
+                try {
+                    com.studencollabfin.server.model.User author = userService.getUserById(post.getAuthorId());
+                    if (author != null && author.getEmail() != null) {
+                        String domain = extractDomainFromEmail(author.getEmail());
+                        if (domain != null && !domain.isEmpty() && domain.equals(institutionDomain)) {
+                            // This post belongs to this user's domain but wasn't marked
+                            if (!domainPosts.contains(post)) {
+                                domainPosts.add(post);
+                                // ✅ AUTO-UPDATE: Set the domain for future queries
+                                post.setInstitutionDomain(domain);
+                                postRepository.save(post);
+                                System.out.println("✅ Auto-populated institutionDomain for post: " + post.getId());
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    System.err.println("⚠️ Could not populate domain for post: " + post.getId());
+                }
+            }
+        }
+
+        System.out.println("✅ Fetched " + domainPosts.size() + " posts for domain: " + institutionDomain);
+        return domainPosts;
+    }
+
     // Legacy method for backward compatibility (returns all posts without
     // filtering)
     public List<Post> getAllPosts() {
@@ -352,5 +418,21 @@ public class PostService {
 
         postRepository.save(social);
         return savedComment;
+    }
+
+    /**
+     * ✅ DOMAIN-LOCKED INSTITUTIONAL ISOLATION: Extract email domain
+     * Converts "sara@sinhgad.edu" → "sinhgad.edu"
+     * Converts "user@coep.ac.in" → "coep.ac.in"
+     * 
+     * @param email The user's email address
+     * @return The domain portion of the email, or empty string if invalid
+     */
+    private String extractDomainFromEmail(String email) {
+        if (email == null || !email.contains("@")) {
+            return "";
+        }
+        String domain = email.substring(email.indexOf("@") + 1).toLowerCase().trim();
+        return domain.isEmpty() ? "" : domain;
     }
 }

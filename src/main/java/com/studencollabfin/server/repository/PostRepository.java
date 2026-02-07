@@ -24,6 +24,9 @@ public interface PostRepository extends MongoRepository<Post, String> {
     // Campus isolation: Find all posts by college (SocialPost and TeamFindingPost)
     List<Post> findByCollege(String college);
 
+    // ✅ DOMAIN-LOCKED INSTITUTIONAL ISOLATION: Find posts by email domain
+    List<Post> findByInstitutionDomain(String institutionDomain);
+
     // ✅ NEW: Find posts created before a specific time (for expiry detection)
     List<Post> findByCreatedAtBefore(LocalDateTime dateTime);
 }
