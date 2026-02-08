@@ -16,10 +16,19 @@ public class CommentController {
     private CommentService commentService;
 
     /**
-     * Get top-level comments for a post
+     * Get comments for a post
+     * 
+     * @param postId         the post ID
+     * @param includeReplies if true, returns all comments including nested; if
+     *                       false or omitted, returns only top-level
      */
     @GetMapping("/post/{postId}")
-    public List<Comment> getCommentsForPost(@PathVariable String postId) {
+    public List<Comment> getCommentsForPost(
+            @PathVariable String postId,
+            @RequestParam(value = "includeReplies", required = false, defaultValue = "false") Boolean includeReplies) {
+        if (includeReplies != null && includeReplies) {
+            return commentService.getAllCommentsForPost(postId);
+        }
         return commentService.getCommentsForPost(postId);
     }
 
