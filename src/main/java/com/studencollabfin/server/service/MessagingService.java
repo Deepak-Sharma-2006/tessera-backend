@@ -9,6 +9,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import com.studencollabfin.server.repository.UserRepository;
 import com.studencollabfin.server.model.User;
+import com.studencollabfin.server.dto.ConversationInviteResponse;
 
 import java.util.Arrays;
 import java.util.Date;
@@ -62,6 +63,13 @@ public class MessagingService {
 
         if (conversationId != null) {
             Conversation conv = conversationRepository.findById(conversationId).orElseThrow();
+
+            // ✅ CRITICAL: Only allow messaging if conversation is ACCEPTED
+            if (!"ACCEPTED".equals(conv.getStatus())) {
+                throw new RuntimeException(
+                        "Cannot send message in PENDING conversation. Invite must be accepted first.");
+            }
+
             conv.setUpdatedAt(new Date());
             conversationRepository.save(conv);
 
@@ -252,6 +260,36 @@ public class MessagingService {
         return allUserConversations.stream()
                 .filter(conv -> !userId.equals(conv.getInitiatorId()))
                 .filter(conv -> "PENDING".equals(conv.getStatus()) || "ACCEPTED".equals(conv.getStatus()))
+                .toList();
+    }
+
+    /**
+     * ✅ Get ALL invites FOR a user with ENRICHED user details
+     * Returns invites SENT TO them (not sent BY them).
+     * Includes initiator's name, college, department for UI display.
+     * 
+     * Used for app inbox display - includes initiator details so app can show:
+     * - Sender name, college, department
+     * - Conversation status (PENDING/ACCEPTED)
+     * 
+     * @param userId User to fetch invites for (recipient)
+     * @return List of enriched conversations with initiator details
+     */
+    public List<ConversationInviteResponse> getAllUserInvitesEnriched(String userId) {
+        // Get all conversations where user is a participant
+        List<Conversation> allUserConversations = conversationRepository.findByParticipantIdsContaining(userId);
+
+        // Filter to only conversations where userId is NOT the initiator
+        // Include both PENDING and ACCEPTED statuses
+        // Enrich with initiator user details
+        return allUserConversations.stream()
+                .filter(conv -> !userId.equals(conv.getInitiatorId()))
+                .filter(conv -> "PENDING".equals(conv.getStatus()) || "ACCEPTED".equals(conv.getStatus()))
+                .map(conv -> {
+                    // Fetch initiator's user details
+                    User initiator = userRepository.findById(conv.getInitiatorId()).orElse(null);
+                    return new ConversationInviteResponse(conv, initiator);
+                })
                 .toList();
     }
 }

@@ -3,6 +3,7 @@ package com.studencollabfin.server.controller;
 import com.studencollabfin.server.model.Conversation;
 import com.studencollabfin.server.model.Message;
 import com.studencollabfin.server.service.MessagingService;
+import com.studencollabfin.server.dto.ConversationInviteResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -98,6 +99,19 @@ public class MessagingController {
     public ResponseEntity<List<Conversation>> getAllUserInvites(@PathVariable String userId) {
         List<Conversation> allInvites = messagingService.getAllUserInvites(userId);
         return ResponseEntity.ok(allInvites);
+    }
+
+    /**
+     * ✅ Get ALL invites FOR a user with ENRICHED user details
+     * Returns invites SENT TO them with initiator name, college, department
+     * 
+     * @param userId User to fetch all invites for
+     * @return List of enriched conversations with initiator details
+     */
+    @GetMapping("/invites/enriched/{userId}")
+    public ResponseEntity<List<ConversationInviteResponse>> getAllUserInvitesEnriched(@PathVariable String userId) {
+        List<ConversationInviteResponse> enrichedInvites = messagingService.getAllUserInvitesEnriched(userId);
+        return ResponseEntity.ok(enrichedInvites);
     }
 
     /**
