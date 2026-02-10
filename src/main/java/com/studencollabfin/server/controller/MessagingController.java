@@ -87,6 +87,20 @@ public class MessagingController {
     }
 
     /**
+     * ✅ Get ALL invites for a user (both PENDING and ACCEPTED)
+     * Persists accepted invites in the inbox display.
+     * 
+     * @param userId User to fetch all invites for
+     * @return List of all conversations (PENDING and ACCEPTED) where user is
+     *         recipient
+     */
+    @GetMapping("/invites/all/{userId}")
+    public ResponseEntity<List<Conversation>> getAllUserInvites(@PathVariable String userId) {
+        List<Conversation> allInvites = messagingService.getAllUserInvites(userId);
+        return ResponseEntity.ok(allInvites);
+    }
+
+    /**
      * Respond to a pending invite.
      * 
      * @param conversationId ID of the PENDING conversation

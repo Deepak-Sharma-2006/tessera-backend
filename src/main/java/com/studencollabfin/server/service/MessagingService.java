@@ -231,4 +231,27 @@ public class MessagingService {
                 .filter(conv -> !userId.equals(conv.getInitiatorId()))
                 .toList();
     }
+
+    /**
+     * ✅ Get ALL invites FOR a user (both PENDING and ACCEPTED)
+     * Returns invites SENT TO them (not sent BY them).
+     * Filters out conversations initiated by the user.
+     * 
+     * Used for inbox display - includes both pending and accepted invites.
+     * 
+     * @param userId User to fetch invites for (recipient)
+     * @return List of conversations where this user received an invite (any status)
+     */
+    public List<Conversation> getAllUserInvites(String userId) {
+        // Get all conversations where user is a participant
+        List<Conversation> allUserConversations = conversationRepository.findByParticipantIdsContaining(userId);
+
+        // Filter to only conversations where userId is NOT the initiator
+        // (i.e., invites received, not sent)
+        // Include both PENDING and ACCEPTED statuses
+        return allUserConversations.stream()
+                .filter(conv -> !userId.equals(conv.getInitiatorId()))
+                .filter(conv -> "PENDING".equals(conv.getStatus()) || "ACCEPTED".equals(conv.getStatus()))
+                .toList();
+    }
 }
