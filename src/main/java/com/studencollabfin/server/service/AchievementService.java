@@ -70,44 +70,66 @@ public class AchievementService {
     }
 
     public void unlockAchievement(String userId, String title) {
+        // ✅ CRITICAL: Add badge to user.badges array immediately (achievement doc
+        // optional)
         @SuppressWarnings("null")
-        Achievement achievement = achievementRepository.findByUserIdAndTitle(userId, title).orElse(null);
-        if (achievement != null && !achievement.isUnlocked()) {
-            achievement.setUnlocked(true);
-            achievement.setUnlockedAt(LocalDateTime.now());
-            achievementRepository.save(achievement);
-
-            // ✅ CRITICAL: Also add badge to user.badges array in MongoDB so frontend can
-            // check it
-            @SuppressWarnings("null")
-            User user = userRepository.findById(userId).orElse(null);
-            if (user != null) {
-                if (user.getBadges() == null) {
-                    user.setBadges(new ArrayList<>());
-                }
-                if (!user.getBadges().contains(title)) {
-                    user.getBadges().add(title);
-                    userRepository.save(user);
-
-                    // ✅ REAL-TIME: Broadcast badge unlock via WebSocket
-                    if (messagingTemplate != null) {
-                        try {
-                            messagingTemplate.convertAndSendToUser(
-                                    userId,
-                                    "/queue/badge-unlock",
-                                    Map.of(
-                                            "badgeName", title,
-                                            "message", "🎉 " + title + " badge unlocked!",
-                                            "timestamp", System.currentTimeMillis()));
-                            System.out.println("[BadgeService] ✅ WebSocket broadcast sent for " + title + " unlock");
-                        } catch (Exception e) {
-                            System.err.println("[BadgeService] ⚠️ WebSocket broadcast failed: " + e.getMessage());
-                        }
-                    }
-                }
+        User user = userRepository.findById(userId).orElse(null);
+        if (user != null) {
+            if (user.getBadges() == null) {
+                user.setBadges(new ArrayList<>());
             }
 
-            notificationService.notifyUser(userId, Map.of("type", "ACHIEVEMENT_UNLOCKED", "title", title));
+            // Only add if not already present
+            if (!user.getBadges().contains(title)) {
+                user.getBadges().add(title);
+                userRepository.save(user);
+                System.out.println("[BadgeService] ✅ Added '" + title + "' to user.badges array for " + userId);
+
+                // ✅ REAL-TIME: Broadcast badge unlock via WebSocket
+                if (messagingTemplate != null) {
+                    try {
+                        messagingTemplate.convertAndSendToUser(
+                                userId,
+                                "/queue/badge-unlock",
+                                Map.of(
+                                        "badgeName", title,
+                                        "message", "🎉 " + title + " badge unlocked!",
+                                        "timestamp", System.currentTimeMillis()));
+                        System.out.println("[BadgeService] ✅ WebSocket broadcast sent for " + title + " unlock");
+                    } catch (Exception e) {
+                        System.err.println("[BadgeService] ⚠️ WebSocket broadcast failed: " + e.getMessage());
+                    }
+                }
+            } else {
+                System.out.println("[BadgeService] ℹ️ User already has '" + title + "' badge");
+            }
+        } else {
+            System.err.println("[BadgeService] ❌ User not found: " + userId);
+        }
+
+        // Also create achievement record if it doesn't exist
+        try {
+            @SuppressWarnings("null")
+            Achievement achievement = achievementRepository.findByUserIdAndTitle(userId, title).orElse(null);
+            if (achievement == null) {
+                achievement = new Achievement();
+                achievement.setUserId(userId);
+                achievement.setTitle(title);
+                achievement.setDescription("Achievement: " + title);
+                achievement.setType(Achievement.AchievementType.SPECIAL);
+                achievement.setXpValue(25);
+                achievement.setUnlocked(true);
+                achievement.setUnlockedAt(LocalDateTime.now());
+                achievementRepository.save(achievement);
+                System.out.println("[BadgeService] 📝 Created achievement record for " + title);
+            } else if (!achievement.isUnlocked()) {
+                achievement.setUnlocked(true);
+                achievement.setUnlockedAt(LocalDateTime.now());
+                achievementRepository.save(achievement);
+                System.out.println("[BadgeService] ✅ Marked achievement as unlocked for " + title);
+            }
+        } catch (Exception e) {
+            System.err.println("[BadgeService] ⚠️ Achievement record creation failed: " + e.getMessage());
         }
     }
 

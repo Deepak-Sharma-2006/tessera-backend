@@ -380,8 +380,16 @@ public class PostService {
         comment.setCreatedAt(LocalDateTime.now());
         comment.setParentId(req.getParentId());
 
-        // Determine post type and scope based on SocialPost type
-        if (social.getType() == com.studencollabfin.server.model.PostType.DISCUSSION) {
+        // Determine post type and scope based on SocialPost category
+        // ✅ ALLOW GLOBAL HUB: Mark INTER category posts as GLOBAL scope
+        String category = social.getCategory() != null ? social.getCategory() : "CAMPUS";
+
+        if ("INTER".equals(category)) {
+            // INTER posts are in the Global Hub - allow cross-domain comments
+            comment.setPostType(social.getType().name());
+            comment.setScope("GLOBAL");
+            System.out.println("✅ GLOBAL HUB: Comment scope set to GLOBAL for INTER post");
+        } else if (social.getType() == com.studencollabfin.server.model.PostType.DISCUSSION) {
             comment.setPostType("DISCUSSION");
             comment.setScope("GLOBAL");
         } else {

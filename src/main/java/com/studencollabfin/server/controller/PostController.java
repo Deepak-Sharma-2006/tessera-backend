@@ -211,10 +211,15 @@ public class PostController {
             System.out.println("Incoming SocialPost: " + socialPost.getTitle());
             System.out.println("Type: " + socialPost.getType());
             System.out.println("Content: " + socialPost.getContent());
+            System.out.println("Category: " + socialPost.getCategory()); // ✅ LOG CATEGORY
             String userId = getCurrentUserId(authentication, request);
             System.out.println("Author ID: " + userId);
             Post createdPost = postService.createPost(socialPost, userId);
             System.out.println("Post created successfully with ID: " + createdPost.getId());
+            // ✅ VERIFY category was saved
+            if (createdPost instanceof SocialPost) {
+                System.out.println("Saved post category: " + ((SocialPost) createdPost).getCategory());
+            }
 
             // 📊 GAMIFICATION: Award XP for creating a post
             gamificationService.awardXp(userId, XPAction.CREATE_POST);
@@ -533,35 +538,127 @@ public class PostController {
     public ResponseEntity<Object> getPostById(@PathVariable String id, Authentication authentication,
             HttpServletRequest request) {
         try {
+            System.err.println("\n\n███████████████████████████████████████████████████████████████████");
+            System.err.println("📍 ===>>> NEW SECURITY FIX ACTIVATED - getPostById endpoint <<<===");
+            System.err.println("███████████████████████████████████████████████████████████████████\n");
             Post post = postService.getPostById(id);
+            System.out.println(
+                    "🔍 POST RETRIEVAL: Fetched post ID: " + id + ", Type: " + post.getClass().getSimpleName());
 
             // ✅ SECURITY LAYER: Verify user's domain matches post's domain (institutional
             // isolation)
+            // EXCEPTION: Allow cross-domain access for INTER category posts (Global Hub)
             String userId = getCurrentUserId(authentication, request);
+            System.out.println("🔑 SECURITY: UserId from request: " + userId);
+
             if (userId != null && !userId.trim().isEmpty()) {
                 try {
                     com.studencollabfin.server.model.User currentUser = userService.getUserById(userId);
-                    if (currentUser != null && currentUser.getEmail() != null && post.getInstitutionDomain() != null) {
+                    if (currentUser != null && currentUser.getEmail() != null) {
                         String userDomain = extractDomainFromEmail(currentUser.getEmail());
                         String postDomain = post.getInstitutionDomain();
 
-                        // Cross-domain access denied
-                        if (!userDomain.equals(postDomain)) {
-                            System.err.println("🔒 SECURITY: Cross-domain access DENIED - User domain: " + userDomain
-                                    + ", Post domain: " + postDomain);
-                            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                                    .body(java.util.Map.of("error", "Cross-domain post access denied",
-                                            "userDomain", userDomain,
-                                            "postDomain", postDomain));
+                        // Handle case where postDomain is null (shouldn't happen for properly created
+                        // posts)
+                        if (postDomain == null || postDomain.trim().isEmpty()) {
+                            System.err.println("⚠️ WARNING: Post has no institutionDomain set (ID: " + id + ")");
+                            postDomain = "unknown";
                         }
-                        System.out.println("✅ SECURITY: Domain verification PASSED for user: " + userId
-                                + " accessing post in domain: " + postDomain);
+
+                        System.out.println(
+                                "🔒 SECURITY CHECK START: User domain=" + userDomain + ", Post domain=" + postDomain);
+
+                        // ✅ ALLOW GLOBAL HUB: Check if post is in INTER category (Global Hub)
+                        String postCategory = null;
+                        com.studencollabfin.server.model.PostType postType = null;
+                        boolean isGlobalHubPost = false;
+
+                        if (post instanceof com.studencollabfin.server.model.SocialPost) {
+                            com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
+                            postCategory = social.getCategory();
+                            postType = social.getType();
+
+                            System.out.println("📋 POST INFO: Category from DB=" + postCategory + ", Type=" + postType);
+
+                            // ✅ If category is null (old posts), check if post type indicates Global Hub
+                            if (postCategory == null || postCategory.trim().isEmpty()) {
+                                // Global Hub post types: DISCUSSION, POLL, COLLAB
+                                if (postType == com.studencollabfin.server.model.PostType.DISCUSSION ||
+                                        postType == com.studencollabfin.server.model.PostType.POLL ||
+                                        postType == com.studencollabfin.server.model.PostType.COLLAB) {
+                                    postCategory = "INTER";
+                                    isGlobalHubPost = true;
+                                    System.out.println("⚠️ INFERRED: Category was null, but type " + postType
+                                            + " indicates GLOBAL HUB");
+                                } else {
+                                    postCategory = "CAMPUS";
+                                    System.out.println("⚠️ DEFAULTED: Category was null, type " + postType
+                                            + ", defaulting to CAMPUS");
+                                }
+                            } else if ("INTER".equals(postCategory.trim())) {
+                                isGlobalHubPost = true;
+                                System.out.println("✓ CONFIRMED: Category is explicitly INTER (GLOBAL HUB)");
+                            } else {
+                                System.out.println("ℹ️ INFO: Category is " + postCategory + " (CAMPUS POST)");
+                            }
+                        } else if (post instanceof com.studencollabfin.server.model.TeamFindingPost) {
+                            postCategory = "CAMPUS";
+                            System.out.println("📋 POST INFO: TeamFindingPost detected - treating as CAMPUS");
+                        } else {
+                            postCategory = "CAMPUS";
+                            System.out.println("📋 POST INFO: Generic Post detected - treating as CAMPUS");
+                        }
+
+                        // SECURITY CHECK: Cross-domain access allowed if post is in INTER category OR
+                        // is a Global Hub type
+                        System.out.println(
+                                "🔐 DECISION FACTORS: userDomain=" + userDomain + ", postDomain=" + postDomain +
+                                        ", postCategory=" + postCategory + ", isGlobalHubPost=" + isGlobalHubPost);
+
+                        // Allow access if:
+                        // 1. Domains match (same college), OR
+                        // 2. Post is INTER category (Global Hub), OR
+                        // 3. Post type indicates Global Hub (DISCUSSION/POLL/COLLAB from INTER)
+                        boolean domainMatches = userDomain.equals(postDomain);
+                        boolean isInterCategory = "INTER".equals(postCategory);
+
+                        System.out.println("🔐 ACCESS DECISION: domainMatches=" + domainMatches +
+                                ", isInterCategory=" + isInterCategory + ", isGlobalHubPost=" + isGlobalHubPost);
+                        System.out.println("🔐 CONDITION: (!domainMatches=" + !domainMatches + " AND !isInterCategory="
+                                + !isInterCategory +
+                                " AND !isGlobalHubPost=" + !isGlobalHubPost + ") = "
+                                + (!domainMatches && !isInterCategory && !isGlobalHubPost));
+
+                        if (!domainMatches && !isInterCategory && !isGlobalHubPost) {
+                            System.err.println("❌ ACCESS DENIED: Different domains AND not a Global Hub post");
+                            System.err.println("   User: " + userDomain + " | Post: " + postDomain + " | Category: "
+                                    + postCategory);
+                            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                                    .body(java.util.Map.of(
+                                            "error", "Access denied to this private college pod",
+                                            "userDomain", userDomain,
+                                            "postDomain", postDomain,
+                                            "postCategory", postCategory,
+                                            "postType", postType != null ? postType.name() : "null",
+                                            "reason", "Cross-domain access only allowed for Global Hub posts"));
+                        }
+
+                        if (domainMatches) {
+                            System.out.println("✅ ACCESS ALLOWED: Same college domain");
+                        } else if (isInterCategory || isGlobalHubPost) {
+                            System.out.println("✅ ACCESS ALLOWED: Global Hub post (cross-domain access permitted)");
+                        }
+                    } else {
+                        System.err.println("⚠️ SECURITY: User or email not found for userId=" + userId);
                     }
                 } catch (Exception ex) {
-                    System.err.println("⚠️ SECURITY: Error verifying domain: " + ex.getMessage());
+                    System.err.println("❌ SECURITY: Exception during domain verification: " + ex.getMessage());
+                    ex.printStackTrace();
                     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                            .body(java.util.Map.of("error", "Error verifying post access"));
+                            .body(java.util.Map.of("error", "Error verifying post access", "details", ex.getMessage()));
                 }
+            } else {
+                System.out.println("⚠️ SECURITY: No userId found - unauthenticated access attempted");
             }
 
             java.util.Map<String, Object> richPost = new java.util.HashMap<>();
@@ -575,6 +672,10 @@ public class PostController {
                 richPost.put("content", social.getContent());
                 richPost.put("type", social.getType() != null ? social.getType().name() : "");
                 richPost.put("postType", social.getType() != null ? social.getType().name() : "");
+                // ✅ Category with fallback for backward compatibility with old posts
+                String category = social.getCategory() != null && !social.getCategory().isEmpty() ? social.getCategory()
+                        : "CAMPUS";
+                richPost.put("category", category);
                 richPost.put("likes", social.getLikes() != null ? social.getLikes() : new java.util.ArrayList<>());
                 richPost.put("commentIds",
                         social.getCommentIds() != null ? social.getCommentIds() : new java.util.ArrayList<>());
@@ -697,6 +798,11 @@ public class PostController {
                 richPost.put("content", social.getContent());
                 richPost.put("type", social.getType() != null ? social.getType().name() : "");
                 richPost.put("postType", social.getType() != null ? social.getType().name() : "");
+                // ✅ Include category in response with fallback for backward compatibility
+                String category = social.getCategory() != null && !social.getCategory().isEmpty() ? social.getCategory()
+                        : "CAMPUS";
+                richPost.put("category", category);
+                richPost.put("institutionDomain", post.getInstitutionDomain()); // ✅ Include domain for debugging
                 richPost.put("likes", social.getLikes() != null ? social.getLikes() : new java.util.ArrayList<>());
                 richPost.put("commentIds",
                         social.getCommentIds() != null ? social.getCommentIds() : new java.util.ArrayList<>());

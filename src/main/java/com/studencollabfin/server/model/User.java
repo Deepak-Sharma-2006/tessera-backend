@@ -51,6 +51,12 @@ public class User {
     private String portfolioUrl;
     private boolean profileCompleted = false;
 
+    // Meritocracy & Report System
+    private int reportCount = 0; // Track number of times user has been reported
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime penaltyExpiry; // When the Spam Alert badge expires
+    private boolean isBanned = false; // Ban status if reportCount >= 3
+
     // Date fields - stored as LocalDateTime and serialized as ISO-8601
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime createdAt; // When the account was created
