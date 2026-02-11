@@ -33,24 +33,47 @@ public class DiscoveryController {
         private SkillSimilarityService similarityService;
 
         /**
-         * Get top 5 global skill matches for the authenticated user.
-         * Uses Jaccard similarity to rank candidates across ALL colleges.
+         * Get paginated global skill matches for the authenticated user.
+         * 🔄 PAGINATION SUPPORT: Supports page & limit for infinite scrolling.
+         * 🎯 SORTING: Consistent by similarity score (ties broken by user ID).
          * 
+         * @param page        Current page (1-indexed, default 1)
+         * @param limit       Results per page (default 5 for Web compatibility, max 100
+         *                    for App)
          * @param currentUser Authenticated user (injected by Spring Security)
-         * @return Top 5 matching users globally (no college filter)
+         * @return Paginated list of matching users globally (no college filter)
          */
         @GetMapping("/mesh")
-        public ResponseEntity<List<User>> getGlobalMatches(@AuthenticationPrincipal User currentUser) {
+        public ResponseEntity<List<User>> getGlobalMatches(
+                        @RequestParam(defaultValue = "1") int page,
+                        @RequestParam(defaultValue = "5") int limit,
+                        @AuthenticationPrincipal User currentUser) {
+
+                // Validate pagination parameters
+                if (page < 1)
+                        page = 1;
+                if (limit < 1)
+                        limit = 5;
+                if (limit > 100)
+                        limit = 100; // Cap at 100 to prevent abuse
+
+                int offset = (page - 1) * limit;
+                logger.info("📄 [PAGINATION] page={}, limit={}, offset={}", page, limit, offset);
+
                 // Fetch all users from database
                 List<User> allUsers = userRepository.findAll();
                 logger.info("📊 Total users in DB: {}", allUsers.size());
 
-                // If not authenticated, return all users except first (unsorted)
+                // If not authenticated, return paginated users (unsorted)
                 if (currentUser == null) {
-                        logger.warn("⚠️ /api/discovery/mesh - currentUser is NULL (not authenticated) - returning all {} users",
-                                        allUsers.size());
-                        // Return all users (no self-filtering since we don't know who 'self' is)
-                        return ResponseEntity.ok(allUsers.stream().limit(5).collect(Collectors.toList()));
+                        logger.warn("⚠️ /api/discovery/mesh - currentUser is NULL (not authenticated)");
+                        List<User> paginatedUsers = allUsers.stream()
+                                        .skip(offset)
+                                        .limit(limit)
+                                        .collect(Collectors.toList());
+                        logger.info("✅ Returning {} unauthenticated candidates (page {} of ~{})",
+                                        paginatedUsers.size(), page, (allUsers.size() + limit - 1) / limit);
+                        return ResponseEntity.ok(paginatedUsers);
                 }
 
                 logger.info("✅ /api/discovery/mesh - Authenticated user: {} from {}", currentUser.getId(),
@@ -59,22 +82,35 @@ public class DiscoveryController {
                 List<String> mySkills = currentUser.getSkills();
                 logger.info("📊 Current user skills: {}", mySkills);
 
-                List<User> topMatches = allUsers.stream()
+                // 🔄 CONSISTENT SORTING: By similarity score (descending), then by user ID
+                // (ascending)
+                // This ensures stable pagination across multiple requests
+                List<User> sortedMatches = allUsers.stream()
                                 .filter(u -> !u.getId().equals(currentUser.getId())) // Exclude self
-                                .peek(u -> logger.debug("Comparing with user: {} from {}", u.getId(),
-                                                u.getCollegeName()))
                                 .sorted((u1, u2) -> {
                                         double score1 = similarityService.calculateSimilarity(mySkills, u1.getSkills());
                                         double score2 = similarityService.calculateSimilarity(mySkills, u2.getSkills());
-                                        logger.debug("Similarity scores: {} -> {}, {} -> {}", u1.getId(), score1,
-                                                        u2.getId(), score2);
-                                        return Double.compare(score2, score1); // Descending order (highest matches
-                                                                               // first)
+
+                                        // Primary: Sort by score (descending - highest match first)
+                                        int scoreComparison = Double.compare(score2, score1);
+                                        if (scoreComparison != 0)
+                                                return scoreComparison;
+
+                                        // Secondary: Sort by ID (ascending) to break ties consistently
+                                        return u1.getId().compareTo(u2.getId());
                                 })
-                                .limit(5) // Top 5 students globally
                                 .collect(Collectors.toList());
 
-                logger.info("✅ Returning {} top matches", topMatches.size());
+                logger.info("✅ Sorted {} candidates by similarity score", sortedMatches.size());
+
+                // Apply pagination
+                List<User> topMatches = sortedMatches.stream()
+                                .skip(offset)
+                                .limit(limit)
+                                .collect(Collectors.toList());
+
+                logger.info("✅ Returning {} matches (page {} of ~{})",
+                                topMatches.size(), page, (sortedMatches.size() + limit - 1) / limit);
                 return ResponseEntity.ok(topMatches);
         }
 

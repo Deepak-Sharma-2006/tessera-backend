@@ -50,10 +50,11 @@ public class MessagingController {
     /**
      * Send a collaboration invite to another user.
      * Creates a PENDING conversation and sends WebSocket notification.
+     * 🔄 HANDLES DUPLICATES: Returns 409 Conflict if already connected.
      * 
      * @param targetId User to send invite to
      * @param body     Request body with senderId
-     * @return Created conversation with PENDING status
+     * @return Created conversation with PENDING status, or 409 if already exists
      */
     @PostMapping("/invite/{targetId}")
     public ResponseEntity<?> sendInvite(
@@ -71,6 +72,13 @@ public class MessagingController {
                     "message", "Invite sent successfully",
                     "conversationId", conversation.getId()));
         } catch (RuntimeException e) {
+            // 🔄 Check if error is "already exists" - return 409 Conflict instead of 400
+            if (e.getMessage() != null && e.getMessage().contains("already exists")) {
+                return ResponseEntity.status(409).body(Map.of(
+                        "success", false,
+                        "error", "Already connected with this user",
+                        "code", "ALREADY_EXISTS"));
+            }
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
