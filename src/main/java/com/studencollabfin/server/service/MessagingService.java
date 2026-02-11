@@ -54,14 +54,13 @@ public class MessagingService {
                     ? conv.getLastReadTimestamps().get(userId)
                     : conv.getCreatedAt();
 
-            if (lastReadTime == null) {
-                lastReadTime = conv.getCreatedAt();
-            }
+            // Create effectively final variable for lambda expression
+            final Date effectiveLastReadTime = (lastReadTime != null) ? lastReadTime : conv.getCreatedAt();
 
             // Count messages sent AFTER the last read time
             List<Message> allMessages = messageRepository.findByConversationIdOrderBySentAtAsc(conv.getId());
             long unreadCount = allMessages.stream()
-                    .filter(msg -> msg.getSentAt().after(lastReadTime))
+                    .filter(msg -> msg.getSentAt().after(effectiveLastReadTime))
                     .filter(msg -> !msg.getSenderId().equals(userId)) // Don't count own messages
                     .count();
 
