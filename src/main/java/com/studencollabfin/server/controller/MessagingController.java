@@ -44,7 +44,14 @@ public class MessagingController {
         String text = (String) body.get("text");
         @SuppressWarnings("unchecked")
         List<String> attachmentUrls = (List<String>) body.getOrDefault("attachmentUrls", null);
-        return messagingService.sendMessage(conversationId, senderId, text, attachmentUrls);
+
+        // ✅ NEW: Support for reply fields
+        String replyToId = (String) body.getOrDefault("replyToId", null);
+        String replyToContent = (String) body.getOrDefault("replyToContent", null);
+        String replyToSenderName = (String) body.getOrDefault("replyToSenderName", null);
+
+        return messagingService.sendMessage(conversationId, senderId, text, attachmentUrls, replyToId, replyToContent,
+                replyToSenderName);
     }
 
     /**
@@ -139,6 +146,30 @@ public class MessagingController {
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "message", accept ? "Invite accepted" : "Invite declined"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * ✅ NEW: Mark a conversation as read by the current user
+     * Updates the last read timestamp
+     * 
+     * @param conversationId ID of the conversation
+     * @param body           Request body with "userId"
+     * @return Success response
+     */
+    @PostMapping("/conversation/{conversationId}/markAsRead")
+    public ResponseEntity<?> markConversationAsRead(
+            @PathVariable String conversationId,
+            @RequestBody Map<String, String> body) {
+        try {
+            String userId = body.get("userId");
+            if (userId == null || userId.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "userId is required"));
+            }
+            messagingService.markConversationAsRead(conversationId, userId);
+            return ResponseEntity.ok(Map.of("success", true, "message", "Conversation marked as read"));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

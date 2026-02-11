@@ -15,6 +15,10 @@ public class Conversation {
     private Date createdAt;
     private Date updatedAt;
 
+    // ✅ NEW: Unread message tracking per participant
+    private java.util.Map<String, Integer> unreadCounts; // userId -> unreadCount
+    private java.util.Map<String, Date> lastReadTimestamps; // userId -> lastReadTime
+
     // Getters and setters
     public String getId() {
         return id;
@@ -62,5 +66,23 @@ public class Conversation {
 
     public void setInitiatorId(String initiatorId) {
         this.initiatorId = initiatorId;
+    }
+
+    // ✅ NEW: Unread count getters/setters
+    public java.util.Map<String, Integer> getUnreadCounts() {
+        return unreadCounts;
+    }
+
+    public void setUnreadCounts(java.util.Map<String, Integer> unreadCounts) {
+        this.unreadCounts = unreadCounts;
+    }
+
+    // ✅ NEW: Last read timestamp getters/setters
+    public java.util.Map<String, Date> getLastReadTimestamps() {
+        return lastReadTimestamps;
+    }
+
+    public void setLastReadTimestamps(java.util.Map<String, Date> lastReadTimestamps) {
+        this.lastReadTimestamps = lastReadTimestamps;
     }
 }
