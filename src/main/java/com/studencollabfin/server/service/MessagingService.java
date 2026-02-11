@@ -72,6 +72,9 @@ public class MessagingService {
             // Store unread count
             conv.getUnreadCounts().put(userId, (int) unreadCount);
 
+            // ✅ FIXED: Persist the calculation back to database
+            conversationRepository.save(conv);
+
             System.out
                     .println("[UnreadCount] User: " + userId + ", Conv: " + conv.getId() + ", Unread: " + unreadCount);
         } catch (Exception e) {
