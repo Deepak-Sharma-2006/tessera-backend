@@ -11,6 +11,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.stream.Collectors;
 
 /**
@@ -138,5 +140,61 @@ public class DiscoveryController {
                                 .collect(Collectors.toList());
 
                 return ResponseEntity.ok(matches);
+        }
+
+        /**
+         * 🎯 Smart Batching for App: Infinite Recycling with Exclude List
+         * Implements the "Waiting Line" (FIFO) experience for Discovery Deck.
+         * Users appear in order of joining, and the deck recycles once everyone has
+         * been seen.
+         * 
+         * POST endpoint to handle large ID lists in request body.
+         * 
+         * @param excludeIds List of user IDs to exclude from results
+         * @param limit      Number of results to return (default 10, max 100)
+         * @return List of users sorted by joinedDate (ASC) for FIFO queue behavior
+         */
+        @PostMapping("/mesh/batch")
+        public ResponseEntity<List<User>> getDiscoveryBatch(
+                        @RequestBody List<String> excludeIds,
+                        @RequestParam(defaultValue = "10") int limit) {
+
+                // Validate limit parameter
+                if (limit < 1)
+                        limit = 10;
+                if (limit > 100)
+                        limit = 100; // Cap at 100 to prevent abuse
+
+                logger.info("🎯 [DISCOVER_BATCH] Received {} exclude IDs, limit={}", excludeIds.size(), limit);
+
+                // Convert to Set for O(1) lookup
+                Set<String> excludeSet = new HashSet<>(excludeIds);
+                logger.info("📋 [DISCOVER_BATCH] Exclude Set size: {}", excludeSet.size());
+
+                // Fetch all users and filter
+                List<User> allUsers = userRepository.findAll();
+                logger.info("📊 [DISCOVER_BATCH] Total users in DB: {}", allUsers.size());
+
+                // 🔄 FIFO QUEUE LOGIC:
+                // - Filter: _id MUST NOT be in excludeIds
+                // - Sort: Strict by joinedDate ASC (oldest members first)
+                // - Limit: Respect the limit param
+                List<User> batchCandidates = allUsers.stream()
+                                .filter(u -> !excludeSet.contains(u.getId())) // Exclude users in the list
+                                .sorted((u1, u2) -> {
+                                        // Sort by joinedDate (ASC) - oldest users first
+                                        if (u1.getJoinedDate() == null || u2.getJoinedDate() == null) {
+                                                // Handle null dates by comparing IDs
+                                                return u1.getId().compareTo(u2.getId());
+                                        }
+                                        return u1.getJoinedDate().compareTo(u2.getJoinedDate());
+                                })
+                                .limit(limit)
+                                .collect(Collectors.toList());
+
+                logger.info("✅ [DISCOVER_BATCH] Returning {} candidates (filtered from {} total)",
+                                batchCandidates.size(), allUsers.size());
+
+                return ResponseEntity.ok(batchCandidates);
         }
 }
