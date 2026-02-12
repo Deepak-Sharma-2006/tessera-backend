@@ -177,7 +177,8 @@ public class DiscoveryController {
 
                 // 🔄 FIFO QUEUE LOGIC:
                 // - Filter: _id MUST NOT be in excludeIds
-                // - Sort: Strict by joinedDate ASC (oldest members first)
+                // - Sort: Strict by joinedDate ASC (oldest members first), then by ID ASC as
+                // tie-breaker
                 // - Limit: Respect the limit param
                 List<User> batchCandidates = allUsers.stream()
                                 .filter(u -> !excludeSet.contains(u.getId())) // Exclude users in the list
@@ -187,7 +188,15 @@ public class DiscoveryController {
                                                 // Handle null dates by comparing IDs
                                                 return u1.getId().compareTo(u2.getId());
                                         }
-                                        return u1.getJoinedDate().compareTo(u2.getJoinedDate());
+
+                                        // Primary: Compare joinedDate
+                                        int dateComparison = u1.getJoinedDate().compareTo(u2.getJoinedDate());
+                                        if (dateComparison != 0) {
+                                                return dateComparison; // Different dates? Use date
+                                        }
+
+                                        // Tie-Breaker: Same date? Use ID as deterministic tie-breaker
+                                        return u1.getId().compareTo(u2.getId());
                                 })
                                 .limit(limit)
                                 .collect(Collectors.toList());
