@@ -201,6 +201,14 @@ public class DiscoveryController {
                                 .limit(limit)
                                 .collect(Collectors.toList());
 
+                // 🔍 DEBUG: Log the sorted order to verify stability
+                logger.info("✅ [DISCOVER_BATCH] Final Sort Order (Deterministic):");
+                for (int i = 0; i < batchCandidates.size(); i++) {
+                        User user = batchCandidates.get(i);
+                        logger.info("   [{}] ID: {} | Name: {} | JoinedDate: {}",
+                                        i, user.getId(), user.getFullName(), user.getJoinedDate());
+                }
+
                 logger.info("✅ [DISCOVER_BATCH] Returning {} candidates (filtered from {} total)",
                                 batchCandidates.size(), allUsers.size());
 
