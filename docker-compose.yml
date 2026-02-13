@@ -1,0 +1,64 @@
+version: "3.8"
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: tessera-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: tessera_dev_pass
+      MONGO_INITDB_DATABASE: studencollabfin
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - tessera-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: MongoDB Express for GUI management
+  mongo-express:
+    image: mongo-express:latest
+    container_name: tessera-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: tessera_dev_pass
+      ME_CONFIG_MONGODB_URL: mongodb://admin:tessera_dev_pass@mongodb:27017/
+      ME_CONFIG_BASICAUTH: "false"
+    depends_on:
+      - mongodb
+    networks:
+      - tessera-network
+
+  # Optional: Backend service (for testing full stack)
+  # tessera-backend:
+  #   build:
+  #     context: ./server
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     - MONGODB_URI=mongodb://admin:tessera_dev_pass@mongodb:27017/studencollabfin
+  #     - JWT_SECRET=StudCollabDefault2026
+  #     - SPRING_PROFILES_ACTIVE=dev
+  #   depends_on:
+  #     - mongodb
+  #   networks:
+  #     - tessera-network
+
+volumes:
+  mongodb_data:
+  mongodb_config:
+
+networks:
+  tessera-network:
+    driver: bridge

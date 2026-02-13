@@ -1,0 +1,44 @@
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Application Properties
+application-local.properties
+application-dev.properties
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build
+target/
+node_modules/
+dist/
+build/
+
+# Dependencies
+package-lock.json
+yarn.lock
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+Thumbs.db
+.DS_Store
+
+# User-specific settings
+.classpath
+.project
+.settings/
+*.iml
+*.iws
+*.ipr

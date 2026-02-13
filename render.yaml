@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: tessera-backend
+    env: java
+    region: oregon
+    plan: free
+
+    # Build command - Maven build
+    buildCommand: >
+      mvn clean -DskipTests=true 
+      -Dmaven.wagon.http.ssl.insecure=true 
+      -Dmaven.wagon.http.ssl.allowall=true
+      package
+
+    # Start command - Run the compiled JAR
+    startCommand: >
+      java -jar 
+      target/server-0.0.1-SNAPSHOT.jar 
+      --server.port=$PORT
+
+    # Health check
+    healthCheckPath: /api/health
+
+    # Environment variables
+    envVars:
+      - key: PORT
+        value: "10000"
+
+      - key: SPRING_PROFILES_ACTIVE
+        value: "prod"
+
+      # MongoDB Atlas URI from friend's cluster
+      # IMPORTANT: Update this with actual connection string
+      # Format: mongodb+srv://username:password@cluster.mongodb.net/studencollabfin
+      - key: MONGODB_URI
+        fromDatabase:
+          name: tessera-mongo
+          property: connectionString
+
+      # JWT Secret for token signing
+      - key: JWT_SECRET
+        sync: false
+        # Must be set manually in Render dashboard - generate random 32+ char string
