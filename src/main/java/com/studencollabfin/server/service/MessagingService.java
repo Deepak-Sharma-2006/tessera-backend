@@ -30,7 +30,90 @@ public class MessagingService {
     private AchievementService achievementService;
 
     public List<Conversation> getUserConversations(String userId) {
-        return conversationRepository.findByParticipantIdsContaining(userId);
+        List<Conversation> conversations = conversationRepository.findByParticipantIdsContaining(userId);
+
+        // ✅ NEW: Calculate unread counts for each conversation
+        for (Conversation conv : conversations) {
+            calculateUnreadCount(conv, userId);
+        }
+
+        return conversations;
+    }
+
+    /**
+     * ✅ NEW: Calculate unread message count for a user in a conversation
+     * Count = messages sent AFTER user's last read timestamp
+     */
+    private void calculateUnreadCount(Conversation conv, String userId) {
+        if (conv == null)
+            return;
+
+        try {
+            // Get the user's last read timestamp (default to conversation creation time)
+            Date lastReadTime = conv.getLastReadTimestamps() != null
+                    ? conv.getLastReadTimestamps().get(userId)
+                    : conv.getCreatedAt();
+
+            // Create effectively final variable for lambda expression
+            final Date effectiveLastReadTime = (lastReadTime != null) ? lastReadTime : conv.getCreatedAt();
+
+            // Count messages sent AFTER the last read time
+            List<Message> allMessages = messageRepository.findByConversationIdOrderBySentAtAsc(conv.getId());
+            long unreadCount = allMessages.stream()
+                    .filter(msg -> msg.getSentAt().after(effectiveLastReadTime))
+                    .filter(msg -> !msg.getSenderId().equals(userId)) // Don't count own messages
+                    .count();
+
+            // Initialize unreadCounts map if null
+            if (conv.getUnreadCounts() == null) {
+                conv.setUnreadCounts(new java.util.HashMap<>());
+            }
+
+            // Store unread count
+            conv.getUnreadCounts().put(userId, (int) unreadCount);
+
+            // ✅ FIXED: Persist the calculation back to database
+            conversationRepository.save(conv);
+
+            System.out
+                    .println("[UnreadCount] User: " + userId + ", Conv: " + conv.getId() + ", Unread: " + unreadCount);
+        } catch (Exception e) {
+            System.err.println("Error calculating unread count: " + e.getMessage());
+            // Fallback to 0 on error
+            if (conv.getUnreadCounts() == null) {
+                conv.setUnreadCounts(new java.util.HashMap<>());
+            }
+            conv.getUnreadCounts().put(userId, 0);
+        }
+    }
+
+    /**
+     * ✅ NEW: Mark messages in a conversation as read by a user
+     * Updates the last read timestamp
+     */
+    public void markConversationAsRead(String conversationId, String userId) {
+        try {
+            Conversation conv = conversationRepository.findById(conversationId).orElse(null);
+            if (conv == null)
+                return;
+
+            // Initialize maps if needed
+            if (conv.getLastReadTimestamps() == null) {
+                conv.setLastReadTimestamps(new java.util.HashMap<>());
+            }
+            if (conv.getUnreadCounts() == null) {
+                conv.setUnreadCounts(new java.util.HashMap<>());
+            }
+
+            // Update last read timestamp to now
+            conv.getLastReadTimestamps().put(userId, new Date());
+            conv.getUnreadCounts().put(userId, 0);
+
+            conversationRepository.save(conv);
+            System.out.println("[MarkAsRead] User: " + userId + ", Conv: " + conversationId);
+        } catch (Exception e) {
+            System.err.println("Error marking conversation as read: " + e.getMessage());
+        }
     }
 
     public Optional<Conversation> getConversation(String id) {
@@ -47,7 +130,8 @@ public class MessagingService {
         return conversationRepository.save(conv);
     }
 
-    public Message sendMessage(String conversationId, String senderId, String text, List<String> attachmentUrls) {
+    public Message sendMessage(String conversationId, String senderId, String text, List<String> attachmentUrls,
+            String replyToId, String replyToContent, String replyToSenderName) {
         Message msg = new Message();
         msg.setConversationId(conversationId);
         msg.setRoomId(conversationId); // For global rooms, roomId = conversationId
@@ -56,6 +140,13 @@ public class MessagingService {
         msg.setAttachmentUrls(attachmentUrls);
         msg.setSentAt(new Date());
         msg.setRead(false);
+
+        // ✅ NEW: Set reply fields if present
+        if (replyToId != null && !replyToId.isEmpty()) {
+            msg.setReplyToId(replyToId);
+            msg.setReplyToContent(replyToContent);
+            msg.setReplyToName(replyToSenderName); // Field name is replyToName, not replyToSenderName
+        }
 
         // Set messageType and scope for global inter-college/inter-campus conversations
         msg.setMessageType(Message.MessageType.CHAT);
@@ -77,6 +168,11 @@ public class MessagingService {
             checkAndUnlockBridgeBuilder(senderId, conv);
         }
         return messageRepository.save(msg);
+    }
+
+    // ✅ NEW: Overload for backward compatibility
+    public Message sendMessage(String conversationId, String senderId, String text, List<String> attachmentUrls) {
+        return sendMessage(conversationId, senderId, text, attachmentUrls, null, null, null);
     }
 
     private void checkAndUnlockBridgeBuilder(String senderId, Conversation conv) {
