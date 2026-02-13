@@ -44,6 +44,8 @@ public class Message {
 
     // Reply-to fields (for quoted/threaded replies)
     private String replyToId; // ID of the message being replied to
+    private String replyToSenderId; // ✅ CRITICAL: ID of the user who sent the original message (for viewer-relative
+                                    // display)
     private String replyToName; // Sender name of the message being replied to
     private String replyToContent; // Content of the message being replied to
 

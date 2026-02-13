@@ -131,7 +131,7 @@ public class MessagingService {
     }
 
     public Message sendMessage(String conversationId, String senderId, String text, List<String> attachmentUrls,
-            String replyToId, String replyToContent, String replyToSenderName) {
+            String replyToId, String replyToContent, String replyToSenderName, String replyToSenderId) {
         Message msg = new Message();
         msg.setConversationId(conversationId);
         msg.setRoomId(conversationId); // For global rooms, roomId = conversationId
@@ -146,6 +146,7 @@ public class MessagingService {
             msg.setReplyToId(replyToId);
             msg.setReplyToContent(replyToContent);
             msg.setReplyToName(replyToSenderName); // Field name is replyToName, not replyToSenderName
+            msg.setReplyToSenderId(replyToSenderId); // ✅ CRITICAL: Save the sender ID for mirror logic
         }
 
         // Set messageType and scope for global inter-college/inter-campus conversations
@@ -170,9 +171,16 @@ public class MessagingService {
         return messageRepository.save(msg);
     }
 
-    // ✅ NEW: Overload for backward compatibility
+    // ✅ NEW: Overload for backward compatibility (7 parameters)
+    public Message sendMessage(String conversationId, String senderId, String text, List<String> attachmentUrls,
+            String replyToId, String replyToContent, String replyToSenderName) {
+        return sendMessage(conversationId, senderId, text, attachmentUrls, replyToId, replyToContent,
+                replyToSenderName, null);
+    }
+
+    // ✅ NEW: Overload for backward compatibility (4 parameters)
     public Message sendMessage(String conversationId, String senderId, String text, List<String> attachmentUrls) {
-        return sendMessage(conversationId, senderId, text, attachmentUrls, null, null, null);
+        return sendMessage(conversationId, senderId, text, attachmentUrls, null, null, null, null);
     }
 
     private void checkAndUnlockBridgeBuilder(String senderId, Conversation conv) {
