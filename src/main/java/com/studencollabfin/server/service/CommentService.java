@@ -8,11 +8,16 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 public class CommentService {
     @Autowired
     private CommentRepository commentRepository;
+
+    @Autowired(required = false)
+    private HardModeBadgeService hardModeBadgeService;
 
     /**
      * Get top-level comments for a post (no parent)
@@ -41,7 +46,25 @@ public class CommentService {
      */
     public Comment addComment(Comment comment) {
         comment.setCreatedAt(LocalDateTime.now());
-        return commentRepository.save(comment);
+        Comment savedComment = commentRepository.save(comment);
+
+        // ✅ TRACK REPLY: Update badge progress
+        if (hardModeBadgeService != null && comment.getAuthorId() != null) {
+            try {
+                // Track the reply for badge progress
+                Map<String, Object> metadata = new HashMap<>();
+                metadata.put("postType", comment.getPostType());
+                metadata.put("scope", comment.getScope());
+
+                hardModeBadgeService.trackReplyAction(comment.getAuthorId(), "reply", metadata);
+                System.out.println(
+                        "[CommentService] ✅ Reply tracked for badge progress - user: " + comment.getAuthorId());
+            } catch (Exception e) {
+                System.err.println("[CommentService] ⚠️ Error tracking reply: " + e.getMessage());
+            }
+        }
+
+        return savedComment;
     }
 
     /**
