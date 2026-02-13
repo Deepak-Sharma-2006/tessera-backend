@@ -8,8 +8,11 @@ import lombok.AllArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
 
 @Data
 @NoArgsConstructor
@@ -56,6 +59,21 @@ public class User {
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime penaltyExpiry; // When the Spam Alert badge expires
     private boolean isBanned = false; // Ban status if reportCount >= 3
+
+    // Hard-Mode Badge System
+    private int totalReplies = 0; // Total replies across all posts
+    private int weeklyReplies = 0; // Replies in current week (resets every 7 days)
+    private int loginStreak = 0; // Consecutive days logged in
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+    private LocalDate lastLoginDate; // Last date user logged in
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+    private LocalDate lastUnlockDate; // Last date a hard-mode badge was unlocked
+    private int dailyUnlocksCount = 0; // How many badges unlocked today (max 2)
+    private List<String> hardModeBadgesEarned = new ArrayList<>(); // Hard-mode badges that have been earned
+    private List<String> hardModeBadgesLocked = new ArrayList<>(); // Hard-mode badges awaiting unlock (blocked by daily
+                                                                   // limit)
+    private Map<String, Integer> statsMap = new HashMap<>(); // Tracks: helpNeededReplies, pinnedResources,
+                                                             // correctPolls, etc.
 
     // Date fields - stored as LocalDateTime and serialized as ISO-8601
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")

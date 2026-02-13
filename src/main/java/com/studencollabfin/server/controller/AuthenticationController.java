@@ -6,6 +6,7 @@ import com.studencollabfin.server.dto.AuthenticationResponse;
 import com.studencollabfin.server.dto.RegisterRequest;
 import com.studencollabfin.server.model.User;
 import com.studencollabfin.server.service.UserService;
+import com.studencollabfin.server.service.HardModeBadgeService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.Cookie;
@@ -20,10 +21,13 @@ public class AuthenticationController {
 
     private final UserService userService;
     private final JwtUtil jwtUtil;
+    private final HardModeBadgeService hardModeBadgeService;
 
-    public AuthenticationController(UserService userService, JwtUtil jwtUtil) {
+    public AuthenticationController(UserService userService, JwtUtil jwtUtil,
+            HardModeBadgeService hardModeBadgeService) {
         this.userService = userService;
         this.jwtUtil = jwtUtil;
+        this.hardModeBadgeService = hardModeBadgeService;
     }
 
     @PostMapping("/login")
@@ -40,6 +44,14 @@ public class AuthenticationController {
             // For local dev we keep secure=false; in production set secure=true
             cookie.setSecure(false);
             response.addCookie(cookie);
+
+            // ✅ TRACK LOGIN: Update login streak and badge progress
+            try {
+                hardModeBadgeService.trackLogin(user.getId());
+                System.out.println("[AuthenticationController] ✅ Login tracked for user: " + user.getId());
+            } catch (Exception e) {
+                System.err.println("[AuthenticationController] ⚠️ Error tracking login: " + e.getMessage());
+            }
 
             // ✅ CRITICAL FIX: Include collegeName and badges in auth response
             return ResponseEntity.ok(new AuthenticationResponse(

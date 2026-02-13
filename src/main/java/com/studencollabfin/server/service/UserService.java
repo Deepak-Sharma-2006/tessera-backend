@@ -26,6 +26,9 @@ public class UserService implements UserDetailsService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired(required = false)
+    private HardModeBadgeService hardModeBadgeService;
+
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
         User user = userRepository.findByEmail(email)
@@ -212,7 +215,14 @@ public class UserService implements UserDetailsService {
                         newUser.setCreatedAt(now);
                         newUser.setJoinedDate(now);
 
-                        return userRepository.save(newUser);
+                        User savedUser = userRepository.save(newUser);
+
+                        // ✅ Initialize hard-mode badges for new user
+                        if (hardModeBadgeService != null) {
+                            hardModeBadgeService.initializeHardModeBadgesForUser(savedUser.getId());
+                        }
+
+                        return savedUser;
                     }
                 });
     }
@@ -248,7 +258,14 @@ public class UserService implements UserDetailsService {
         newUser.setCreatedAt(now);
         newUser.setJoinedDate(now);
 
-        return userRepository.save(newUser);
+        User savedUser = userRepository.save(newUser);
+
+        // ✅ Initialize hard-mode badges for new user
+        if (hardModeBadgeService != null) {
+            hardModeBadgeService.initializeHardModeBadgesForUser(savedUser.getId());
+        }
+
+        return savedUser;
     }
 
     /**
