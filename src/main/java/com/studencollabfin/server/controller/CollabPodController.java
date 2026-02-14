@@ -196,6 +196,65 @@ public class CollabPodController {
         }
     }
 
+    /**
+     * ✅ PHASE 7: Unified Directory - Get all pods where user is a participant
+     * GET /api/pods/my-pods?userId={userId}
+     * 
+     * Returns ALL pods where user is:
+     * - ownerId (shows 👑)
+     * - in adminIds (shows 🛡️)
+     * - in memberIds (no badge)
+     * 
+     * Use Cases:
+     * - Populate Pods/Rooms tabs with all user's active pods
+     * - Persist cards even after "Leave" (user not in memberIds)
+     * - Remove cards only on "Kick" or "Ban" (provider invalidation)
+     * 
+     * Logic:
+     * 1. Query pods by ownerId
+     * 2. Query pods where user is in adminIds
+     * 3. Query pods where user is in memberIds
+     * 4. Deduplicate by podId and return
+     */
+    @GetMapping("/my-pods")
+    public ResponseEntity<List<CollabPod>> getMyPods(
+            @RequestParam(required = true) String userId,
+            Authentication authentication,
+            HttpServletRequest request) {
+        try {
+            if (userId == null || userId.isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(null);
+            }
+
+            // ✅ Query pods where user has any role
+            List<CollabPod> ownedPods = collabPodRepository.findByOwnerId(userId);
+            List<CollabPod> adminPods = collabPodRepository.findByAdminIdsContaining(userId);
+            List<CollabPod> memberPods = collabPodRepository.findByMemberIdsContaining(userId);
+
+            // Deduplicate by podId
+            java.util.Map<String, CollabPod> podMap = new java.util.LinkedHashMap<>();
+
+            if (ownedPods != null) {
+                ownedPods.forEach(pod -> podMap.put(pod.getId(), pod));
+            }
+            if (adminPods != null) {
+                adminPods.forEach(pod -> podMap.put(pod.getId(), pod));
+            }
+            if (memberPods != null) {
+                memberPods.forEach(pod -> podMap.put(pod.getId(), pod));
+            }
+
+            List<CollabPod> myPods = new java.util.ArrayList<>(podMap.values());
+            System.out.println("✅ My Pods loaded for user " + userId + ": " + myPods.size() + " total pods");
+            return ResponseEntity.ok(myPods);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<CollabPod> getPodById(@PathVariable String id) {
         @SuppressWarnings("null")
@@ -277,6 +336,92 @@ public class CollabPodController {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(java.util.Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * ✅ PHASE 7: Ban a user from a pod (permanent blacklist)
+     * POST /pods/{id}/ban/{userId}
+     * 
+     * Request body:
+     * {
+     * "actorId": "user123", // User performing the ban
+     * "reason": "Harassment"
+     * }
+     * 
+     * Effect:
+     * - Adds userId to bannedIds array
+     * - Card vanishes from user's tabs (via provider invalidation)
+     * - User cannot rejoin (joinPodEnhanced checks bannedIds)
+     * 
+     * Only Owner can ban
+     */
+    @PostMapping("/{id}/ban/{userId}")
+    public ResponseEntity<?> banUser(@PathVariable String id, @PathVariable String userId,
+            @RequestBody java.util.Map<String, String> payload) {
+        try {
+            String actorId = payload.get("actorId");
+            String reason = payload.get("reason");
+
+            if (actorId == null || reason == null) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "actorId and reason are required"));
+            }
+
+            // Fetch pod
+            CollabPod pod = collabPodRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Pod not found"));
+
+            // ✅ Only Owner can ban
+            if (pod.getOwnerId() == null || !pod.getOwnerId().equals(actorId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("error", "Only the pod owner can ban users"));
+            }
+
+            // Initialize bannedIds if null
+            if (pod.getBannedIds() == null) {
+                pod.setBannedIds(new java.util.ArrayList<>());
+            }
+
+            // Add user to bannedIds (prevent duplicates)
+            if (!pod.getBannedIds().contains(userId)) {
+                pod.getBannedIds().add(userId);
+
+                // Also remove from members, admins
+                if (pod.getMemberIds() != null) {
+                    pod.getMemberIds().remove(userId);
+                }
+                if (pod.getAdminIds() != null) {
+                    pod.getAdminIds().remove(userId);
+                }
+                if (pod.getMemberNames() != null) {
+                    // Find and remove corresponding name
+                    com.studencollabfin.server.model.User bannedUser = userService.getUserById(userId);
+                    if (bannedUser != null) {
+                        pod.getMemberNames().remove(bannedUser.getFullName());
+                    }
+                }
+                if (pod.getAdminNames() != null) {
+                    com.studencollabfin.server.model.User bannedUser = userService.getUserById(userId);
+                    if (bannedUser != null) {
+                        pod.getAdminNames().remove(bannedUser.getFullName());
+                    }
+                }
+
+                CollabPod updatedPod = collabPodRepository.save(pod);
+                System.out.println("✅ User " + userId + " banned from pod " + id + " (Reason: " + reason + ")");
+                return ResponseEntity.ok(Map.of(
+                        "message", "User banned from pod",
+                        "bannedUserId", userId,
+                        "pod", updatedPod));
+            } else {
+                return ResponseEntity.ok(Map.of("message", "User was already banned"));
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 
