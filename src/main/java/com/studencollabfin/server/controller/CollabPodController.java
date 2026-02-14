@@ -28,7 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/pods")
+@RequestMapping("/api/pods")
 @CrossOrigin(origins = "http://localhost:5173", allowCredentials = "true")
 public class CollabPodController {
 
