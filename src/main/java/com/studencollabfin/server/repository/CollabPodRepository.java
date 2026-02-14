@@ -46,4 +46,10 @@ public interface CollabPodRepository extends MongoRepository<CollabPod, String> 
 
     // Campus stats: Count pods where user is member but not owner
     long countByMemberIdsContainsAndOwnerIdNot(String memberId, String ownerId);
+
+    // ✅ NEW: Find pods where user is an admin (for "My Pods" filtering)
+    List<CollabPod> findByAdminIdsContaining(String userId);
+
+    // ✅ NEW: Find pods owned by a specific user (for "My Pods" filtering)
+    List<CollabPod> findByOwnerId(String ownerId);
 }

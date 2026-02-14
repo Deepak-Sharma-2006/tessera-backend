@@ -15,12 +15,14 @@ import com.studencollabfin.server.exception.PermissionDeniedException;
 import com.studencollabfin.server.exception.CooldownException;
 import com.studencollabfin.server.exception.BannedFromPodException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -52,6 +54,9 @@ public class CollabPodService {
 
     @Autowired
     private AchievementService achievementService;
+
+    @Autowired
+    private SimpMessagingTemplate messagingTemplate;
 
     @SuppressWarnings("null")
     public CollabPod createPod(String creatorId, CollabPod pod) {
@@ -467,6 +472,23 @@ public class CollabPodService {
         CollabPod updatedPod = collabPodRepository.save(pod);
         System.out.println("  ✓ User " + targetId + " moved to bannedIds and names removed");
 
+        // ✅ LIVE SIGNAL: Broadcast ROLE_CHANGED event to all pod members
+        try {
+            Map<String, Object> roleEvent = new java.util.HashMap<>();
+            roleEvent.put("eventType", "ROLE_CHANGED");
+            roleEvent.put("action", "MEMBER_KICKED");
+            roleEvent.put("targetId", targetId);
+            roleEvent.put("actorId", actorId);
+            roleEvent.put("pod", updatedPod);
+            roleEvent.put("timestamp", System.currentTimeMillis());
+
+            messagingTemplate.convertAndSend("/topic/pod." + podId + ".events", roleEvent);
+            System.out.println("📡 Broadcasted ROLE_CHANGED event to /topic/pod." + podId + ".events");
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to broadcast role change event: " + e.getMessage());
+            e.printStackTrace();
+        }
+
         // Step 8: Create SYSTEM message for audit trail
         try {
             String actorName = getUserName(actorId);
@@ -709,6 +731,23 @@ public class CollabPodService {
 
         CollabPod updatedPod = collabPodRepository.save(pod);
         System.out.println("  ✓ Ownership transferred to " + newOwnerId);
+
+        // ✅ LIVE SIGNAL: Broadcast ROLE_CHANGED event to all pod members
+        try {
+            Map<String, Object> roleEvent = new java.util.HashMap<>();
+            roleEvent.put("eventType", "ROLE_CHANGED");
+            roleEvent.put("action", "OWNERSHIP_TRANSFERRED");
+            roleEvent.put("previousOwner", currentOwnerId);
+            roleEvent.put("newOwner", newOwnerId);
+            roleEvent.put("pod", updatedPod);
+            roleEvent.put("timestamp", System.currentTimeMillis());
+
+            messagingTemplate.convertAndSend("/topic/pod." + podId + ".events", roleEvent);
+            System.out.println("📡 Broadcasted ROLE_CHANGED event to /topic/pod." + podId + ".events");
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to broadcast role change event: " + e.getMessage());
+            e.printStackTrace();
+        }
 
         // Step 5: Create SYSTEM message
         try {
@@ -963,6 +1002,24 @@ public class CollabPodService {
         CollabPod updatedPod = collabPodRepository.save(pod);
         System.out.println("✅ Pod saved with promoted admin");
 
+        // ✅ LIVE SIGNAL: Broadcast ROLE_CHANGED event to all pod members
+        try {
+            Map<String, Object> roleEvent = new java.util.HashMap<>();
+            roleEvent.put("eventType", "ROLE_CHANGED");
+            roleEvent.put("action", "MEMBER_PROMOTED");
+            roleEvent.put("targetId", targetId);
+            roleEvent.put("newRole", "ADMIN");
+            roleEvent.put("actorId", actorId);
+            roleEvent.put("pod", updatedPod);
+            roleEvent.put("timestamp", System.currentTimeMillis());
+
+            messagingTemplate.convertAndSend("/topic/pod." + podId + ".events", roleEvent);
+            System.out.println("📡 Broadcasted ROLE_CHANGED event to /topic/pod." + podId + ".events");
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to broadcast role change event: " + e.getMessage());
+            e.printStackTrace();
+        }
+
         // ✅ Create SYSTEM message for audit trail
         try {
             String actorName = getUserName(actorId);
@@ -1055,6 +1112,24 @@ public class CollabPodService {
         // Save updated pod
         CollabPod updatedPod = collabPodRepository.save(pod);
         System.out.println("✅ Pod saved with demoted member");
+
+        // ✅ LIVE SIGNAL: Broadcast ROLE_CHANGED event to all pod members
+        try {
+            Map<String, Object> roleEvent = new java.util.HashMap<>();
+            roleEvent.put("eventType", "ROLE_CHANGED");
+            roleEvent.put("action", "ADMIN_DEMOTED");
+            roleEvent.put("targetId", targetId);
+            roleEvent.put("newRole", "MEMBER");
+            roleEvent.put("actorId", actorId);
+            roleEvent.put("pod", updatedPod);
+            roleEvent.put("timestamp", System.currentTimeMillis());
+
+            messagingTemplate.convertAndSend("/topic/pod." + podId + ".events", roleEvent);
+            System.out.println("📡 Broadcasted ROLE_CHANGED event to /topic/pod." + podId + ".events");
+        } catch (Exception e) {
+            System.err.println("⚠️ Failed to broadcast role change event: " + e.getMessage());
+            e.printStackTrace();
+        }
 
         // ✅ Create SYSTEM message for audit trail
         try {
