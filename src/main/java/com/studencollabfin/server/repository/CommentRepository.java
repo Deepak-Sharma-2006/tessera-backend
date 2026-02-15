@@ -25,4 +25,7 @@ public interface CommentRepository extends MongoRepository<Comment, String> {
 
     // Delete comments by scope
     void deleteByScope(String scope);
+
+    // ✅ ADMIN: Find all comments by author for cascade deletion
+    List<Comment> findByAuthorId(String authorId);
 }

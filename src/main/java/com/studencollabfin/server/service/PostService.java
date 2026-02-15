@@ -20,6 +20,8 @@ public class PostService {
     private final PostRepository postRepository;
     private final CommentRepository commentRepository;
     private final EventService eventService;
+    private final UserService userService;
+    private final CommentService commentService;
 
     public SocialPost toggleLike(String postId, String userId) {
         Post post = getPostById(postId);
@@ -66,9 +68,6 @@ public class PostService {
         }
         return post;
     }
-
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.studencollabfin.server.service.UserService userService;
 
     public com.studencollabfin.server.model.User getUserById(String userId) {
         return userService.getUserById(userId);
@@ -174,13 +173,18 @@ public class PostService {
         try {
             com.studencollabfin.server.model.User author = userService.getUserById(authorId);
             if (author != null) {
-                author.setPostsCount((author.getPostsCount() == 0 ? 0 : author.getPostsCount()) + 1);
+                int currentCount = author.getPostsCount() == 0 ? 0 : author.getPostsCount();
+                int newCount = currentCount + 1;
+                author.setPostsCount(newCount);
                 userService.updateUserProfile(authorId, author);
-                System.out.println("✓ Incremented postsCount for user: " + authorId + " (new count: "
-                        + author.getPostsCount() + ")");
+                System.out.println("✓ Incremented postsCount for user: " + authorId + " (new count: " + newCount + ")");
 
-                // ✅ SYNC BADGES: Check if user reached postsCount >= 5 for Signal Guardian
-                achievementService.syncUserBadges(author);
+                // ✅ EXPLICIT UNLOCK: Check if user just reached postsCount == 5 for Signal
+                // Guardian
+                if (newCount == 5 && !author.getBadges().contains("Signal Guardian")) {
+                    achievementService.unlockAchievement(authorId, "Signal Guardian");
+                    System.out.println("✓ Signal Guardian badge unlocked! (posts count = 5)");
+                }
             }
         } catch (Exception ex) {
             System.err.println("⚠️ Failed to increment postsCount or sync badges: " + ex.getMessage());
@@ -376,6 +380,7 @@ public class PostService {
         Comment comment = new Comment();
         comment.setPostId(postId);
         comment.setAuthorName(req.getAuthorName());
+        comment.setAuthorId(req.getAuthorId()); // ✅ CRITICAL: Set authorId for stat tracking
         comment.setContent(req.getContent());
         comment.setCreatedAt(LocalDateTime.now());
         comment.setParentId(req.getParentId());
@@ -398,8 +403,8 @@ public class PostService {
             comment.setScope("CAMPUS");
         }
 
-        // Save to comments collection
-        Comment savedComment = commentRepository.save(comment);
+        // ✅ USE COMMENT SERVICE: This will track stats for hard-mode badges
+        Comment savedComment = commentService.addComment(comment);
 
         // Update post with comment ID reference
         if (social.getCommentIds() == null) {

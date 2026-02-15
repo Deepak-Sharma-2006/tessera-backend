@@ -29,4 +29,7 @@ public interface PostRepository extends MongoRepository<Post, String> {
 
     // ✅ NEW: Find posts created before a specific time (for expiry detection)
     List<Post> findByCreatedAtBefore(LocalDateTime dateTime);
+
+    // ✅ ADMIN: Find all posts by author for cascade deletion
+    List<Post> findByAuthorId(String authorId);
 }

@@ -39,8 +39,6 @@ public class AchievementService {
                 Achievement.AchievementType.POD_PIONEER, 100);
         createAchievement(userId, "Bridge Builder", "Collaborated across colleges",
                 Achievement.AchievementType.BRIDGE_BUILDER, 150);
-        createAchievement(userId, "Skill Sage", "Received 3+ skill endorsements",
-                Achievement.AchievementType.SKILL_SAGE, 200);
 
         // --- Standard ---
         createAchievement(userId, "Profile Pioneer", "Complete your profile", Achievement.AchievementType.PARTICIPATION,
@@ -146,6 +144,20 @@ public class AchievementService {
      * 
      * They do NOT affect each other in any way.
      */
+    /**
+     * ✅ STRICT: Badge Sync ONLY enforces existing badges, NEVER adds new ones
+     * 
+     * Purpose: Verify badges in database match current user state
+     * - Removes badges that should be revoked (role changed, etc.)
+     * - DOES NOT automatically grant new badges
+     * 
+     * Rule: All badges ONLY unlock through:
+     * 1. Admin promotion (Campus Catalyst)
+     * 2. Explicit triggers (Pod Pioneer on pod join)
+     * 3. Achievement completion (Signal Guardian when posts >= 5)
+     * 
+     * NEVER auto-unlock on profile load
+     */
     public User syncUserBadges(User user) {
         if (user == null) {
             System.err.println("❌ syncUserBadges: user is null");
@@ -158,122 +170,41 @@ public class AchievementService {
 
         boolean updated = false;
         List<String> currentBadges = user.getBadges();
+        List<String> changes = new ArrayList<>();
 
-        System.out.println("\n🔄 SYNCING BADGES FOR USER: " + user.getId());
-        System.out.println("   isDev: " + user.isDev() + " | role: " + user.getRole());
+        // ✅ ENFORCEMENT ONLY: Remove badges that should NOT exist
 
-        // ╔════════════════════════════════════════════════════════════════╗
-        // ║ BADGE 1: FOUNDING DEV - 100% isDev DEPENDENT ║
-        // ║ DOES NOT depend on role. INDEPENDENT of Campus Catalyst. ║
-        // ╚════════════════════════════════════════════════════════════════╝
-
-        if (user.isDev()) {
-            // isDev is TRUE → Must have Founding Dev badge
-            if (!currentBadges.contains("Founding Dev")) {
-                currentBadges.add("Founding Dev");
-                updated = true;
-                System.out.println("   ✅ ACTION: ADDED 'Founding Dev' (isDev=true)");
-                System.out.println(
-                        "   [BadgeService] ✅ Unlocking Founding Dev and granting Event Creation privileges for user "
-                                + user.getId());
-            } else {
-                System.out.println("   ℹ️ NO CHANGE: Already has 'Founding Dev'");
-            }
-        } else {
-            // isDev is FALSE → Must NOT have Founding Dev badge
-            if (currentBadges.contains("Founding Dev")) {
-                currentBadges.remove("Founding Dev");
-                updated = true;
-                System.out.println("   ✅ ACTION: REMOVED 'Founding Dev' (isDev=false)");
-                System.out.println("   [BadgeService] ❌ Revoking Founding Dev and Event Creation privileges for user "
-                        + user.getId());
-            }
+        // 1. FOUNDING DEV: Remove if isDev=false (but NEVER auto-add)
+        if (!user.isDev() && currentBadges.contains("Founding Dev")) {
+            currentBadges.remove("Founding Dev");
+            updated = true;
+            changes.add("✅ REMOVED 'Founding Dev' (isDev=false)");
         }
 
-        // ╔════════════════════════════════════════════════════════════════╗
-        // ║ BADGE 2: CAMPUS CATALYST - 100% ROLE DEPENDENT ║
-        // ║ DOES NOT depend on isDev. INDEPENDENT of Founding Dev. ║
-        // ╚════════════════════════════════════════════════════════════════╝
-
-        if ("COLLEGE_HEAD".equals(user.getRole())) {
-            // Role is COLLEGE_HEAD → Must have Campus Catalyst badge
-            if (!currentBadges.contains("Campus Catalyst")) {
-                currentBadges.add("Campus Catalyst");
-                updated = true;
-                System.out.println("   ✅ ACTION: ADDED 'Campus Catalyst' (role=COLLEGE_HEAD)");
-                System.out.println(
-                        "   [BadgeService] ✅ Unlocking Campus Catalyst and granting Event Creation privileges for user "
-                                + user.getId());
-            } else {
-                System.out.println("   ℹ️ NO CHANGE: Already has 'Campus Catalyst'");
-            }
-        } else {
-            // Role is NOT COLLEGE_HEAD → Must NOT have Campus Catalyst badge
-            if (currentBadges.contains("Campus Catalyst")) {
-                currentBadges.remove("Campus Catalyst");
-                updated = true;
-                System.out.println("   ✅ ACTION: REMOVED 'Campus Catalyst' (role != COLLEGE_HEAD)");
-                System.out
-                        .println("   [BadgeService] ❌ Revoking Campus Catalyst and Event Creation privileges for user "
-                                + user.getId());
-            }
+        // 2. CAMPUS CATALYST: Remove if role != COLLEGE_HEAD (but NEVER auto-add)
+        if (!"COLLEGE_HEAD".equals(user.getRole()) && currentBadges.contains("Campus Catalyst")) {
+            currentBadges.remove("Campus Catalyst");
+            updated = true;
+            changes.add("✅ REMOVED 'Campus Catalyst' (role != COLLEGE_HEAD)");
         }
 
-        // ╔════════════════════════════════════════════════════════════════╗
-        // ║ BADGE 3: SKILL SAGE - endorsementsCount >= 3 ║
-        // ╚════════════════════════════════════════════════════════════════╝
-
-        if (user.getEndorsementsCount() >= 3) {
-            if (!currentBadges.contains("Skill Sage")) {
-                currentBadges.add("Skill Sage");
-                updated = true;
-                System.out
-                        .println("   ✅ ACTION: ADDED 'Skill Sage' (endorsements=" + user.getEndorsementsCount() + ")");
-            }
-        } else {
-            if (currentBadges.contains("Skill Sage")) {
-                currentBadges.remove("Skill Sage");
-                updated = true;
-                System.out.println(
-                        "   ✅ ACTION: REMOVED 'Skill Sage' (endorsements=" + user.getEndorsementsCount() + ")");
-            }
+        // 4. SIGNAL GUARDIAN: Remove if posts < 5 (never auto-add on load)
+        if (user.getPostsCount() < 5 && currentBadges.contains("Signal Guardian")) {
+            currentBadges.remove("Signal Guardian");
+            updated = true;
+            changes.add("✅ REMOVED 'Signal Guardian' (posts < 5)");
         }
 
-        // ╔════════════════════════════════════════════════════════════════╗
-        // ║ BADGE 4: SIGNAL GUARDIAN - postsCount >= 5 ║
-        // ╚════════════════════════════════════════════════════════════════╝
+        // 5. POD PIONEER: Only removed by explicit trigger, never auto-added
 
-        if (user.getPostsCount() >= 5) {
-            if (!currentBadges.contains("Signal Guardian")) {
-                currentBadges.add("Signal Guardian");
-                updated = true;
-                System.out.println("   ✅ ACTION: ADDED 'Signal Guardian' (posts=" + user.getPostsCount() + ")");
-            }
-        } else {
-            if (currentBadges.contains("Signal Guardian")) {
-                currentBadges.remove("Signal Guardian");
-                updated = true;
-                System.out.println("   ✅ ACTION: REMOVED 'Signal Guardian' (posts=" + user.getPostsCount() + ")");
-            }
-        }
-
-        // ╔════════════════════════════════════════════════════════════════╗
-        // ║ BADGE 5: POD PIONEER - activity-based (permanent once earned) ║
-        // ╚════════════════════════════════════════════════════════════════╝
-        // Pod Pioneer is added by achievement trigger, never removed
-
-        // SAVE if any updates were made
+        // SAVE if any badges were removed
         if (updated) {
+            System.out.println("\n🔄 BADGE ENFORCEMENT - User: " + user.getId());
+            changes.forEach(System.out::println);
             user.setBadges(currentBadges);
             User savedUser = userRepository.save(user);
-            System.out.println("   💾 SAVED: User badges updated in MongoDB");
-            System.out.println("   📦 FINAL BADGES: " + savedUser.getBadges());
-            System.out.println();
             return savedUser;
         } else {
-            System.out.println("   ℹ️ NO CHANGES: Badges already synchronized");
-            System.out.println("   📦 CURRENT BADGES: " + user.getBadges());
-            System.out.println();
             return user;
         }
     }

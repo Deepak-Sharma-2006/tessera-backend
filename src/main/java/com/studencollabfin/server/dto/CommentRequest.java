@@ -7,4 +7,5 @@ public class CommentRequest {
     private String content;
     private String parentId; // optional: id of parent comment
     private String authorName; // name of the commenter
+    private String authorId; // user ID for stat tracking
 }

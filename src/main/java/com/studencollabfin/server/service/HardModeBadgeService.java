@@ -421,6 +421,27 @@ public class HardModeBadgeService {
         checkAndUnlockBadgeCriteria(userId, "silent-sentinel");
 
         userRepository.save(user);
+
+        // ✅ BROADCAST STAT UPDATES: Send updated stats to user via WebSocket
+        try {
+            Map<String, Object> statUpdate = new HashMap<>();
+            statUpdate.put("totalReplies", user.getTotalReplies());
+            statUpdate.put("postsCount", user.getPostsCount());
+            statUpdate.put("loginStreak", user.getLoginStreak());
+            statUpdate.put("correctPolls", user.getStatsMap().getOrDefault("correctPolls", 0));
+            statUpdate.put("collabRoomsJoined", user.getStatsMap().getOrDefault("collabRoomsJoined", 0));
+            statUpdate.put("statsMap", user.getStatsMap());
+
+            if (messagingTemplate != null) {
+                messagingTemplate.convertAndSendToUser(
+                        userId,
+                        "/queue/stat-update",
+                        statUpdate);
+                System.out.println("[HardModeBadgeService] ✅ Stat update broadcasted to user: " + userId);
+            }
+        } catch (Exception e) {
+            System.err.println("[HardModeBadgeService] ⚠️ Failed to broadcast stat update: " + e.getMessage());
+        }
     }
 
     /**

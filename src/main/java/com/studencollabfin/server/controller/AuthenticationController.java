@@ -5,36 +5,55 @@ import com.studencollabfin.server.dto.AuthenticationRequest;
 import com.studencollabfin.server.dto.AuthenticationResponse;
 import com.studencollabfin.server.dto.RegisterRequest;
 import com.studencollabfin.server.model.User;
+import com.studencollabfin.server.model.SystemSettings;
 import com.studencollabfin.server.service.UserService;
 import com.studencollabfin.server.service.HardModeBadgeService;
+import com.studencollabfin.server.repository.SystemSettingsRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = "http://localhost:5173", allowCredentials = "true")
+@CrossOrigin(origins = { "http://localhost:5173", "http://localhost:5174" }, allowCredentials = "true")
 public class AuthenticationController {
 
     private final UserService userService;
     private final JwtUtil jwtUtil;
     private final HardModeBadgeService hardModeBadgeService;
+    private final SystemSettingsRepository systemSettingsRepository;
 
     public AuthenticationController(UserService userService, JwtUtil jwtUtil,
-            HardModeBadgeService hardModeBadgeService) {
+            HardModeBadgeService hardModeBadgeService, SystemSettingsRepository systemSettingsRepository) {
         this.userService = userService;
         this.jwtUtil = jwtUtil;
         this.hardModeBadgeService = hardModeBadgeService;
+        this.systemSettingsRepository = systemSettingsRepository;
     }
 
     @PostMapping("/login")
     public ResponseEntity<?> authenticate(@RequestBody AuthenticationRequest request, HttpServletResponse response) {
         try {
+            // Check maintenance mode
+            List<SystemSettings> settings = systemSettingsRepository.findAll();
+            boolean maintenanceMode = !settings.isEmpty() && settings.get(0).isMaintenanceMode();
+
+            // ✅ STANDARD AUTHENTICATION
             User user = userService.authenticate(request.getEmail(), request.getPassword());
-            final String jwt = jwtUtil.generateToken(user.getEmail());
+
+            // ✅ MAINTENANCE MODE CHECK: Block non-admin users when maintenance is on
+            if (maintenanceMode && !"ADMIN".equals(user.getRole())) {
+                return ResponseEntity.status(503).body(
+                        Map.of("error", "System Maintenance",
+                                "message", "The platform is currently under maintenance. Please try again later."));
+            }
+
+            final String jwt = jwtUtil.generateToken(user.getEmail(), user.getRole());
 
             // Set token as httpOnly cookie for session persistence
             Cookie cookie = new Cookie("token", jwt);
@@ -53,7 +72,7 @@ public class AuthenticationController {
                 System.err.println("[AuthenticationController] ⚠️ Error tracking login: " + e.getMessage());
             }
 
-            // ✅ CRITICAL FIX: Include collegeName and badges in auth response
+            // ✅ CRITICAL FIX: Include collegeName and badges in auth response, with role
             return ResponseEntity.ok(new AuthenticationResponse(
                     jwt,
                     user.getId(),
@@ -61,7 +80,8 @@ public class AuthenticationController {
                     user.getFullName(),
                     user.isProfileCompleted(),
                     user.getCollegeName(),
-                    user.getBadges()));
+                    user.getBadges(),
+                    user.getRole()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

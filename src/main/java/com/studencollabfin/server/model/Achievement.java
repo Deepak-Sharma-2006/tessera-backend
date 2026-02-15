@@ -35,7 +35,6 @@ public class Achievement {
         FOUNDING_DEV, // New MVP Type
         CAMPUS_CATALYST, // New MVP Type
         POD_PIONEER, // New MVP Type
-        BRIDGE_BUILDER, // New MVP Type
-        SKILL_SAGE // New MVP Type
+        BRIDGE_BUILDER // New MVP Type
     }
 }

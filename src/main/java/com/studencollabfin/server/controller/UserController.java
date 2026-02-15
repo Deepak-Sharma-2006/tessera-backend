@@ -37,13 +37,13 @@ public class UserController {
         try {
             User user = userService.findById(userId);
 
-            // ✅ Retroactive check for missed badge unlocks (Bridge Builder)
-            achievementService.retroactivelyUnlockBridgeBuilder(userId);
+            // 🚫 REMOVED: Automatic badge syncing on profile load
+            // Badges should ONLY be unlocked through explicit triggers, not on every fetch
+            // retroactivelyUnlockBridgeBuilder(userId) - runs only once or on specific
+            // activity
+            // syncUserBadges(user) - runs only when explicitly called, not automatically
 
-            // ✅ CRITICAL: Sync all badges based on current user attributes
-            User syncedUser = achievementService.syncUserBadges(user);
-
-            return ResponseEntity.ok(syncedUser);
+            return ResponseEntity.ok(user);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
@@ -54,10 +54,10 @@ public class UserController {
         try {
             User updatedUser = userService.updateUserProfile(userId, profileData);
 
-            // ✅ CRITICAL: Sync all badges after profile update
-            User syncedUser = achievementService.syncUserBadges(updatedUser);
+            // 🚫 REMOVED: Automatic badge syncing on profile update
+            // Badges should ONLY be unlocked through explicit triggers, not on every update
 
-            return ResponseEntity.ok(syncedUser);
+            return ResponseEntity.ok(updatedUser);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
@@ -227,17 +227,16 @@ public class UserController {
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
             // Increment endorsement count
-            user.setEndorsementsCount(user.getEndorsementsCount() + 1);
+            int currentEndorsements = user.getEndorsementsCount();
+            int newEndorsements = currentEndorsements + 1;
+            user.setEndorsementsCount(newEndorsements);
 
             // 📊 GAMIFICATION: Award XP for receiving endorsement
             gamificationService.awardXp(userId, XPAction.RECEIVE_ENDORSEMENT);
 
             user = userRepository.save(user);
 
-            // ✅ SYNC BADGES: Check if endorsement count triggered any badges
-            User syncedUser = achievementService.syncUserBadges(user);
-
-            return ResponseEntity.ok(syncedUser);
+            return ResponseEntity.ok(user);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
