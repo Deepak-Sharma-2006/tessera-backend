@@ -249,6 +249,28 @@ public class PostController {
             System.out.println("[DEBUG] Using fallback userId: " + userId);
         }
 
+        // ✅ RELIST VALIDATION: If linkedPodId is provided, validate it
+        if (teamFindingPost.getLinkedPodId() != null && !teamFindingPost.getLinkedPodId().isEmpty()) {
+            System.out.println("🔁 [RELIST] Validating linkedPodId: " + teamFindingPost.getLinkedPodId());
+
+            // Verify pod exists
+            CollabPod pod = collabPodRepository.findById(teamFindingPost.getLinkedPodId())
+                    .orElseThrow(() -> new RuntimeException("Pod not found: " + teamFindingPost.getLinkedPodId()));
+
+            // Verify pod is TEAM type
+            if (pod.getType() != CollabPod.PodType.TEAM) {
+                throw new RuntimeException("Can only relist TEAM pods");
+            }
+
+            // Verify user is pod owner or admin
+            if (!userId.equals(pod.getOwnerId()) &&
+                    (pod.getAdminIds() == null || !pod.getAdminIds().contains(userId))) {
+                throw new RuntimeException("Only pod owner or admin can create relist posts");
+            }
+
+            System.out.println("✅ [RELIST] Validation passed - creating relist post for pod " + pod.getId());
+        }
+
         Post createdPost = postService.createPost(teamFindingPost, userId);
 
         // 📊 GAMIFICATION: Award XP for creating a post

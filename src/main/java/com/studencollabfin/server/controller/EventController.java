@@ -32,11 +32,15 @@ public class EventController {
      * GET /api/events -> Get all events
      * GET /api/events?category=Hackathon -> Get all events in the "Hackathon"
      * category
+     * GET /api/events?includeHistory=true -> Include past events
      * 
      * ✅ NEW: Sets hasRegistered field for each event based on current user
+     * ✅ NEW: Filters out events where endDate < now (unless includeHistory=true)
      */
     @GetMapping
-    public ResponseEntity<List<Event>> getEvents(@RequestParam(required = false) String category,
+    public ResponseEntity<List<Event>> getEvents(
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false, defaultValue = "false") boolean includeHistory,
             HttpServletRequest request) {
         String currentUserId = request.getHeader("X-User-Id");
 
@@ -45,6 +49,14 @@ public class EventController {
             events = eventService.getEventsByCategory(category);
         } else {
             events = eventService.getAllEvents();
+        }
+
+        // ✅ NEW: Filter out ended events unless includeHistory is true
+        if (!includeHistory) {
+            java.time.LocalDateTime now = java.time.LocalDateTime.now();
+            events = events.stream()
+                    .filter(event -> event.getEndDate() == null || event.getEndDate().isAfter(now))
+                    .collect(java.util.stream.Collectors.toList());
         }
 
         // ✅ NEW: Populate hasRegistered field for current user

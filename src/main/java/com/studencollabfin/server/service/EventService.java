@@ -11,6 +11,7 @@ import com.studencollabfin.server.repository.EventRepository;
 import com.studencollabfin.server.repository.PostRepository;
 import com.studencollabfin.server.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -54,8 +55,8 @@ public class EventService {
 
         // ✅ FIX: Properly parse date and time strings and convert to LocalDateTime
         try {
-            // Parse date (format: YYYY-MM-DD from HTML date input)
-            // Parse time (format: HH:mm from HTML time input)
+            // Parse start date (format: YYYY-MM-DD from HTML date input)
+            // Parse start time (format: HH:mm from HTML time input)
             String dateStr = request.getDate(); // e.g., "2025-09-19"
             String timeStr = request.getTime(); // e.g., "21:30"
 
@@ -66,8 +67,28 @@ public class EventService {
                 newEvent.setStartDate(startDate);
             }
         } catch (Exception e) {
-            System.err.println("Error parsing date/time: " + e.getMessage());
+            System.err.println("Error parsing start date/time: " + e.getMessage());
             // If parsing fails, leave dates as null - frontend will handle gracefully
+        }
+
+        // ✅ NEW: Parse end date and time
+        try {
+            String endDateStr = request.getEndDate();
+            String endTimeStr = request.getEndTime();
+
+            if (endDateStr != null && !endDateStr.isEmpty() && endTimeStr != null && !endTimeStr.isEmpty()) {
+                String endDateTimeStr = endDateStr + "T" + endTimeStr + ":00";
+                LocalDateTime endDate = LocalDateTime.parse(endDateTimeStr);
+                newEvent.setEndDate(endDate);
+
+                // Validate: endDate must be after startDate
+                if (newEvent.getStartDate() != null && endDate.isBefore(newEvent.getStartDate())) {
+                    throw new RuntimeException("Event end date/time must be after start date/time");
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error parsing end date/time: " + e.getMessage());
+            throw new RuntimeException("Invalid end date/time: " + e.getMessage());
         }
 
         // ✅ FIX: Map the requiredSkills field
@@ -351,6 +372,51 @@ public class EventService {
         if (userInPod) {
             throw new RuntimeException(
                     "User is already a member of a formed team in this event. Cannot join another team.");
+        }
+    }
+
+    /**
+     * ✅ NEW: Scheduled task to mark events as COMPLETED when their endDate passes.
+     * 
+     * Runs every hour at minute 0.
+     * Idempotent - can be run multiple times safely.
+     * 
+     * LOGIC:
+     * 1. Find all events where endDate < now AND status != COMPLETED
+     * 2. Update status to COMPLETED
+     * 3. Save events
+     */
+    @Scheduled(cron = "0 0 * * * *") // Every hour at minute 0
+    public void markCompletedEvents() {
+        System.out.println("🔄 [EventService] Checking for completed events...");
+
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            List<Event> allEvents = eventRepository.findAll();
+
+            int updated = 0;
+            for (Event event : allEvents) {
+                // Check if event has endDate and it has passed
+                if (event.getEndDate() != null &&
+                        event.getEndDate().isBefore(now) &&
+                        event.getStatus() != Event.EventStatus.COMPLETED) {
+
+                    event.setStatus(Event.EventStatus.COMPLETED);
+                    eventRepository.save(event);
+                    updated++;
+                    System.out.println("✅ [EventService] Marked event as COMPLETED: " + event.getTitle() + " (ID: "
+                            + event.getId() + ")");
+                }
+            }
+
+            if (updated > 0) {
+                System.out.println("✅ [EventService] Marked " + updated + " event(s) as COMPLETED");
+            } else {
+                System.out.println("✅ [EventService] No events to mark as COMPLETED");
+            }
+        } catch (Exception e) {
+            System.err.println("❌ [EventService] Error marking completed events: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }

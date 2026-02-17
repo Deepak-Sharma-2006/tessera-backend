@@ -21,6 +21,7 @@ public class Event {
     private String collegeId;
     private EventType type;
     private LocalDateTime startDate;
+    private LocalDateTime endDate; // ✅ Event end date/time (when event concludes)
     private LocalDateTime linkEndDate; // ✅ Registration deadline (formerly endDate)
     private int maxParticipants;
     private List<String> participantIds;

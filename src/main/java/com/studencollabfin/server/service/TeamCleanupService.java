@@ -74,9 +74,21 @@ public class TeamCleanupService {
      * - Extract confirmed members
      * - Check minimum team size (2)
      * - Convert to pod or delete
+     * 
+     * ✅ RACE CONDITION FIX: Only delete post if:
+     * - linkedPodId != null (pod already created) OR
+     * - totalApplicants == 0 (no members to process)
      */
     private void processTeamFindingPost(TeamFindingPost post) {
         try {
+            // ✅ SAFETY CHECK: Skip if this is a relist post (already has linkedPodId from
+            // creation)
+            if (post.getLinkedPodId() != null) {
+                System.out.println("⏭️ [TeamCleanup] Skipping post '" + post.getTitle()
+                        + "' - already linked to pod: " + post.getLinkedPodId());
+                return;
+            }
+
             // Step 1: Extract confirmed members
             List<String> confirmedIds = extractConfirmedMembers(post);
 
@@ -88,12 +100,18 @@ public class TeamCleanupService {
                         + "' to CollabPod with " + confirmedIds.size() + " members");
             } else {
                 // ❌ DELETE POST (recruitment failed)
-                System.out.println("❌ [TeamCleanup] Deleted post '" + post.getTitle()
+                System.out.println("❌ [TeamCleanup] Deleting post '" + post.getTitle()
                         + "' (insufficient members: " + confirmedIds.size() + ")");
             }
 
-            // Step 3: Always delete the post after processing
-            postRepository.delete(post);
+            // Step 3: Only delete if safe (pod created OR no applicants)
+            int totalApplicants = post.getApplicants() != null ? post.getApplicants().size() : 0;
+            if (post.getLinkedPodId() != null || totalApplicants == 0) {
+                postRepository.delete(post);
+                System.out.println("🗑️ [TeamCleanup] Post deleted: " + post.getId());
+            } else {
+                System.out.println("⚠️ [TeamCleanup] Post NOT deleted - waiting for pod creation: " + post.getId());
+            }
 
         } catch (Exception e) {
             System.err.println("❌ [TeamCleanup] Error processing post: " + post.getId());
@@ -139,6 +157,8 @@ public class TeamCleanupService {
      * - eventId: Linked to the event
      * - college: Campus isolation maintained
      * - members: All confirmed members
+     * 
+     * ✅ ATOMICITY: Updates post.linkedPodId in same transaction as pod creation
      */
     private void convertPostToPod(TeamFindingPost post, List<String> confirmedIds) {
         CollabPod pod = new CollabPod();
@@ -147,6 +167,7 @@ public class TeamCleanupService {
         pod.setName(post.getTitle() + " Team"); // Append "Team" for clarity
         pod.setDescription(post.getContent() != null ? post.getContent() : "Team pod from event recruitment");
         pod.setCreatorId(post.getAuthorId());
+        pod.setOwnerId(post.getAuthorId());
 
         // Members & capacity
         pod.setMemberIds(new ArrayList<>(confirmedIds));
@@ -168,10 +189,13 @@ public class TeamCleanupService {
         pod.setStatus(CollabPod.PodStatus.ACTIVE);
         pod.setLinkedPostId(post.getId()); // Track origin post
 
-        // Save pod
+        // Save pod FIRST
         CollabPod savedPod = podRepository.save(pod);
 
-        // Update post to link to the created pod
+        // ✅ ATOMICITY: Immediately update post with linkedPodId
         post.setLinkedPodId(savedPod.getId());
+        postRepository.save(post);
+
+        System.out.println("🔗 [TeamCleanup] Pod " + savedPod.getId() + " linked to post " + post.getId());
     }
 }

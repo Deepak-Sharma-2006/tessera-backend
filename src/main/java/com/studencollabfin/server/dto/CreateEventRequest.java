@@ -9,6 +9,8 @@ public class CreateEventRequest {
     private String category;
     private String date; // e.g., "2025-09-19"
     private String time; // e.g., "21:30"
+    private String endDate; // ✅ NEW: Event end date (e.g., "2025-09-19")
+    private String endTime; // ✅ NEW: Event end time (e.g., "23:30")
     private String description;
     private List<String> requiredSkills;
     private Integer maxTeamSize;

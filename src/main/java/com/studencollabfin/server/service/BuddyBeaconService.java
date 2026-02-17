@@ -349,6 +349,9 @@ public class BuddyBeaconService {
 
     /**
      * Accept an application (host only, up to capacity, invite to Collab Pod).
+     * 
+     * ✅ RELIST LOGIC: If post.linkedPodId is set, immediately add member to
+     * existing pod.
      */
     public Application acceptApplication(String postId, String applicationId, String userId) {
         // Try BuddyBeacon
@@ -399,7 +402,7 @@ public class BuddyBeaconService {
                     if (app.getStatus() != Application.Status.PENDING)
                         throw new RuntimeException("Already processed");
 
-                    // ✅ DOUBLE BOOKING PREVENTION (Part 1: The Gatekeeper)
+                    // ✅ ONE TEAM PER EVENT ENFORCEMENT (CRITICAL BUSINESS RULE)
                     String applicantId = app.getApplicantId();
                     String eventId = teamPost.getEventId();
 
@@ -407,10 +410,10 @@ public class BuddyBeaconService {
                     boolean inPod = collabPodRepository.existsByEventIdAndMemberIdsContains(eventId, applicantId);
                     if (inPod) {
                         throw new IllegalStateException(
-                                "User is already in a team (Pod) for this event. Cannot join another team.");
+                                "Applicant already exists in another Team for this event.");
                     }
 
-                    // Check 2: User CONFIRMED in any OTHER Post for this event
+                    // Check 2: User ACCEPTED in any OTHER TeamFindingPost for this event
                     List<TeamFindingPost> otherPosts = postRepository.findByEventId(eventId);
                     boolean inOtherPost = otherPosts.stream()
                             .filter(p -> !p.getId().equals(postId)) // Exclude current post
@@ -421,7 +424,64 @@ public class BuddyBeaconService {
 
                     if (inOtherPost) {
                         throw new IllegalStateException(
-                                "User has already been accepted by another leader for this event. Cannot join multiple teams.");
+                                "Applicant already exists in another Team for this event.");
+                    }
+
+                    // Check 3: Verify no ACCEPTED applications exist for this user in other posts
+                    // for same event
+                    List<Application> userApplications = applicationRepository.findByApplicantId(applicantId);
+                    boolean hasAcceptedApplicationForEvent = userApplications.stream()
+                            .filter(a -> !a.getId().equals(applicationId)) // Exclude current application
+                            .filter(a -> a.getStatus() == Application.Status.ACCEPTED)
+                            .anyMatch(a -> {
+                                // Check if this accepted application belongs to a post for the same event
+                                Optional<Post> otherPostOpt = postRepository.findById(a.getBeaconId());
+                                if (otherPostOpt.isPresent() && otherPostOpt.get() instanceof TeamFindingPost tfp) {
+                                    return eventId.equals(tfp.getEventId());
+                                }
+                                return false;
+                            });
+
+                    if (hasAcceptedApplicationForEvent) {
+                        throw new IllegalStateException(
+                                "Applicant already exists in another Team for this event.");
+                    }
+
+                    // ✅ RELIST LOGIC: If linkedPodId is set, add member to existing pod immediately
+                    if (teamPost.getLinkedPodId() != null) {
+                        try {
+                            System.out.println("🔁 [RELIST] Adding applicant " + applicantId + " to existing pod "
+                                    + teamPost.getLinkedPodId());
+                            collabPodRepository.findById(teamPost.getLinkedPodId()).ifPresent(pod -> {
+                                // Idempotency check: prevent duplicate membership
+                                if (pod.getMemberIds() != null && pod.getMemberIds().contains(applicantId)) {
+                                    System.out.println("⚠️ [RELIST] User already in pod, skipping add");
+                                    return;
+                                }
+                                if (pod.getOwnerId() != null && pod.getOwnerId().equals(applicantId)) {
+                                    System.out.println("⚠️ [RELIST] User is pod owner, skipping add");
+                                    return;
+                                }
+                                // Add member directly (bypassing cooldown/ban checks since owner accepted them)
+                                if (pod.getMemberIds() == null) {
+                                    pod.setMemberIds(new ArrayList<>());
+                                }
+                                if (pod.getMemberNames() == null) {
+                                    pod.setMemberNames(new ArrayList<>());
+                                }
+                                pod.getMemberIds().add(applicantId);
+                                // Get user name for memberNames
+                                userRepository.findById(applicantId).ifPresent(user -> {
+                                    pod.getMemberNames().add(user.getFullName());
+                                });
+                                pod.setLastActive(LocalDateTime.now());
+                                collabPodRepository.save(pod);
+                                System.out.println("✅ [RELIST] Member added to pod " + teamPost.getLinkedPodId());
+                            });
+                        } catch (Exception e) {
+                            System.err.println("❌ [RELIST] Failed to add member to pod: " + e.getMessage());
+                            e.printStackTrace();
+                        }
                     }
 
                     List<String> members = teamPost.getCurrentTeamMembers();
@@ -685,6 +745,7 @@ public class BuddyBeaconService {
      * 3. Find all TeamFindingPost posts that are expired
      * 4. For each expired TeamFindingPost:
      * - Check if it already has a pod (check linkedPodId)
+     * - Skip if it's a relist post (linkedPodId set at creation)
      * - If not, call generateTeamPod() to create a Team Pod
      */
     @Scheduled(cron = "0 * * * * *") // Every minute
@@ -721,6 +782,13 @@ public class BuddyBeaconService {
                 if (post instanceof TeamFindingPost) {
                     TeamFindingPost teamPost = (TeamFindingPost) post;
 
+                    // ✅ SKIP RELIST POSTS: If linkedPodId is already set, this is a relist post
+                    // Don't create a new pod on expiry - members are added immediately on
+                    // acceptance
+                    if (teamPost.getLinkedPodId() != null) {
+                        continue;
+                    }
+
                     // ✅ NEW: Check expiry using expiresAt if set, otherwise use default 24h logic
                     boolean isExpired = false;
                     LocalDateTime now = LocalDateTime.now();
@@ -734,7 +802,7 @@ public class BuddyBeaconService {
                     }
 
                     // Check if TeamFindingPost is expired and doesn't have a pod yet
-                    if (isExpired && teamPost.getLinkedPodId() == null) {
+                    if (isExpired) {
                         try {
                             System.out.println("⏰ [PodGeneration] Generating pod for expired TeamFindingPost: "
                                     + teamPost.getId());
@@ -756,4 +824,5 @@ public class BuddyBeaconService {
             e.printStackTrace();
         }
     }
+
 }

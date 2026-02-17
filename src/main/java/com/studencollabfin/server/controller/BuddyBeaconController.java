@@ -170,4 +170,5 @@ public class BuddyBeaconController {
         beaconService.deleteMyPost(postId, userId);
         return ResponseEntity.noContent().build();
     }
+
 }
