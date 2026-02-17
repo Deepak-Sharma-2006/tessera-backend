@@ -44,9 +44,6 @@ public class CollabPodService {
     private PostRepository postRepository;
 
     @Autowired
-    private PodMessageService podMessageService;
-
-    @Autowired
     private PodCooldownRepository podCooldownRepository;
 
     @Autowired
@@ -307,7 +304,7 @@ public class CollabPodService {
         try {
             // Step 2: Delete all messages where podId matches
             System.out.println("📝 Deleting messages for pod: " + podId);
-            podMessageService.deleteMessagesByPodId(podId);
+            messageRepository.deleteByPodId(podId);
             System.out.println("✅ Messages deleted for pod: " + podId);
 
             // Step 3: Delete all cooldowns where podId matches
