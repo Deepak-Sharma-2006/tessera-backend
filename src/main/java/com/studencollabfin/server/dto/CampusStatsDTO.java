@@ -14,7 +14,7 @@ import java.util.List;
 @AllArgsConstructor
 public class CampusStatsDTO {
     private long totalStudents; // Total students in the user's institution
-    private long openCollaborations; // LOOKING_FOR pods in campus
+    private long collaborations; // LOOKING_FOR pods in campus (keep field name for website compatibility)
     private long myTeams; // Team pods where user is owner or member
     private List<CampusActivityDTO> activityFeed; // Latest 20 activities
 }
