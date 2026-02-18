@@ -172,32 +172,54 @@ public class AchievementService {
         List<String> currentBadges = user.getBadges();
         List<String> changes = new ArrayList<>();
 
-        // ✅ ENFORCEMENT ONLY: Remove badges that should NOT exist
+        // ✅ AUTO-UNLOCK: Add badges based on user attributes (role-based only)
 
-        // 1. FOUNDING DEV: Remove if isDev=false (but NEVER auto-add)
+        // 1. FOUNDING DEV: Auto-unlock if isDev=true
+        if (user.isDev() && !currentBadges.contains("Founding Dev")) {
+            currentBadges.add("Founding Dev");
+            updated = true;
+            changes.add("✅ AUTO-UNLOCKED 'Founding Dev' (isDev=true)");
+            System.out.println("[BadgeSync] 🔓 Auto-unlocked Founding Dev for user " + user.getId());
+        }
+        // Remove if isDev=false
         if (!user.isDev() && currentBadges.contains("Founding Dev")) {
             currentBadges.remove("Founding Dev");
             updated = true;
             changes.add("✅ REMOVED 'Founding Dev' (isDev=false)");
         }
 
-        // 2. CAMPUS CATALYST: Remove if role != COLLEGE_HEAD (but NEVER auto-add)
+        // 2. CAMPUS CATALYST: Auto-unlock if role=COLLEGE_HEAD
+        if ("COLLEGE_HEAD".equals(user.getRole()) && !currentBadges.contains("Campus Catalyst")) {
+            currentBadges.add("Campus Catalyst");
+            updated = true;
+            changes.add("✅ AUTO-UNLOCKED 'Campus Catalyst' (role=COLLEGE_HEAD)");
+            System.out.println("[BadgeSync] 🔓 Auto-unlocked Campus Catalyst for user " + user.getId());
+        }
+        // Remove if role != COLLEGE_HEAD
         if (!"COLLEGE_HEAD".equals(user.getRole()) && currentBadges.contains("Campus Catalyst")) {
             currentBadges.remove("Campus Catalyst");
             updated = true;
             changes.add("✅ REMOVED 'Campus Catalyst' (role != COLLEGE_HEAD)");
         }
 
-        // 4. SIGNAL GUARDIAN: Remove if posts < 5 (never auto-add on load)
+        // 3. SIGNAL GUARDIAN: Auto-unlock if posts >= 5
+        if (user.getPostsCount() >= 5 && !currentBadges.contains("Signal Guardian")) {
+            currentBadges.add("Signal Guardian");
+            updated = true;
+            changes.add("✅ AUTO-UNLOCKED 'Signal Guardian' (posts >= 5)");
+            System.out.println("[BadgeSync] 🔓 Auto-unlocked Signal Guardian for user " + user.getId());
+        }
+        // Remove if posts < 5
         if (user.getPostsCount() < 5 && currentBadges.contains("Signal Guardian")) {
             currentBadges.remove("Signal Guardian");
             updated = true;
             changes.add("✅ REMOVED 'Signal Guardian' (posts < 5)");
         }
 
-        // 5. POD PIONEER: Only removed by explicit trigger, never auto-added
+        // 4. POD PIONEER: Only added via explicit trigger (onJoinPod)
+        // 5. BRIDGE BUILDER: Only added via explicit trigger (onInterCollegeMessage)
 
-        // SAVE if any badges were removed
+        // SAVE if any badges were added or removed
         if (updated) {
             System.out.println("\n🔄 BADGE ENFORCEMENT - User: " + user.getId());
             changes.forEach(System.out::println);
