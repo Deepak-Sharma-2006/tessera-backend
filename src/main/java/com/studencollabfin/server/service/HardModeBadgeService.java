@@ -104,6 +104,24 @@ public class HardModeBadgeService {
                 "spam-alert-sanction", "Spam Alert (Sanction)",
                 "Triggered by any valid report; locks profile for 24 hours.",
                 "PENALTY", "red-pulsing-cross", 1, "reportCount"));
+        
+        // ✅ POWER-FIVE BADGES (Special Management Badges)
+        BADGE_DEFINITIONS.put("founding-dev", new BadgeDefinition(
+                "founding-dev", "Founding Dev",
+                "Platform architect and founding developer.",
+                "LEGENDARY", "gold-glow", 1, "isDev"));
+        BADGE_DEFINITIONS.put("campus-catalyst", new BadgeDefinition(
+                "campus-catalyst", "Campus Catalyst",
+                "Authorized event creator and campus leader.",
+                "EPIC", "purple-shimmer", 1, "role"));
+        BADGE_DEFINITIONS.put("pod-pioneer", new BadgeDefinition(
+                "pod-pioneer", "Pod Pioneer",
+                "Joined your first collaboration pod.",
+                "UNCOMMON", "green-shine", 1, "podJoined"));
+        BADGE_DEFINITIONS.put("bridge-builder", new BadgeDefinition(
+                "bridge-builder", "Bridge Builder",
+                "Collaborated across colleges.",
+                "RARE", "cyan-bridge", 1, "interCollege"));
     }
 
     // ==================== CORE METHODS ====================
@@ -570,21 +588,24 @@ public class HardModeBadgeService {
 
     /**
      * Get all hard-mode badges for user with current progress.
+     * ✅ INCLUDES POWER-FIVE BADGES from user.badges array
      */
     public List<Map<String, Object>> getUserHardModeBadges(String userId) {
         System.out.println("[HardModeBadgeService] 🔍 Fetching badges for user: " + userId);
 
-        List<HardModeBadge> badges = hardModeBadgeRepository.findByUserId(userId);
-        System.out.println("[HardModeBadgeService] 📊 Found " + (badges != null ? badges.size() : 0) + " badges");
-
+        List<HardModeBadge> hardModeBadges = hardModeBadgeRepository.findByUserId(userId);
         User user = userRepository.findById(userId).orElse(null);
+        
+        System.out.println("[HardModeBadgeService] 📊 Found " + (hardModeBadges != null ? hardModeBadges.size() : 0) + " hard-mode badges");
 
-        if (badges == null || badges.isEmpty()) {
-            System.out.println("[HardModeBadgeService] ⚠️ No badges in database for user " + userId);
-            return new ArrayList<>();
+        if (hardModeBadges == null) {
+            hardModeBadges = new ArrayList<>();
         }
 
-        return badges.stream().map(badge -> {
+        List<Map<String, Object>> result = new ArrayList<>();
+        
+        // ✅ STEP 1: Add all hard-mode badges from database
+        result.addAll(hardModeBadges.stream().map(badge -> {
             Map<String, Object> badgeInfo = new HashMap<>();
             badgeInfo.put("badgeId", badge.getBadgeId());
             badgeInfo.put("badgeName", badge.getBadgeName());
@@ -607,7 +628,54 @@ public class HardModeBadgeService {
             }
 
             return badgeInfo;
-        }).collect(Collectors.toList());
+        }).collect(Collectors.toList()));
+        
+        // ✅ STEP 2: Add power-five badges from user.badges array
+        if (user != null && user.getBadges() != null) {
+            List<String> powerFiveBadges = Arrays.asList("Founding Dev", "Campus Catalyst", "Pod Pioneer", "Bridge Builder");
+            
+            for (String badgeName : powerFiveBadges) {
+                // Convert title case to kebab-case for ID matching
+                String badgeId = badgeName.toLowerCase().replace(" ", "-");
+                
+                // Skip if already included from hard-mode collection
+                boolean alreadyAdded = result.stream()
+                    .anyMatch(b -> badgeId.equals(b.get("badgeId")));
+                    
+                if (!alreadyAdded) {
+                    boolean isUnlocked = user.getBadges().contains(badgeName);
+                    
+                    Map<String, Object> powerFiveBadge = new HashMap<>();
+                    powerFiveBadge.put("badgeId", badgeId);
+                    powerFiveBadge.put("badgeName", badgeName);
+                    
+                    // Get tier and visualStyle from definitions
+                    BadgeDefinition def = BADGE_DEFINITIONS.get(badgeId);
+                    if (def != null) {
+                        powerFiveBadge.put("tier", def.tier);
+                        powerFiveBadge.put("visualStyle", def.visualStyle);
+                    } else {
+                        powerFiveBadge.put("tier", "EPIC");
+                        powerFiveBadge.put("visualStyle", "gold-glow");
+                    }
+                    
+                    powerFiveBadge.put("progress", Map.of("current", isUnlocked ? 1 : 0, "total", 1));
+                    powerFiveBadge.put("isUnlocked", isUnlocked);
+                    powerFiveBadge.put("isEquipped", isUnlocked); // Power-five badges auto-equipped when unlocked
+                    powerFiveBadge.put("status", isUnlocked ? "equipped" : "locked");
+                    powerFiveBadge.put("unlockedAt", null);
+                    
+                    result.add(powerFiveBadge);
+                    
+                    if (isUnlocked) {
+                        System.out.println("[HardModeBadgeService] ✅ Added power-five badge: " + badgeName);
+                    }
+                }
+            }
+        }
+        
+        System.out.println("[HardModeBadgeService] 🎯 Total badges returned: " + result.size());
+        return result;
     }
 
     /**
