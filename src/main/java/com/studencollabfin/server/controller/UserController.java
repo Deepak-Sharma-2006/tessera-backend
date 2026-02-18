@@ -70,8 +70,8 @@ public class UserController {
             return ResponseEntity.ok(Map.of(
                     "xp", user.getXp(),
                     "level", user.getLevel(),
-                    "totalXp", user.getTotalXp() != null ? user.getTotalXp() : 0,
-                    "xpMultiplier", user.getXpMultiplier() != null ? user.getXpMultiplier() : 1.0));
+                    "totalXp", user.getTotalXp(),
+                    "xpMultiplier", user.getXpMultiplier()));
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
