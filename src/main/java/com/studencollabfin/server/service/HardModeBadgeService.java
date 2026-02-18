@@ -104,7 +104,7 @@ public class HardModeBadgeService {
                 "spam-alert-sanction", "Spam Alert (Sanction)",
                 "Triggered by any valid report; locks profile for 24 hours.",
                 "PENALTY", "red-pulsing-cross", 1, "reportCount"));
-        
+
         // ✅ POWER-FIVE BADGES (Special Management Badges)
         BADGE_DEFINITIONS.put("founding-dev", new BadgeDefinition(
                 "founding-dev", "Founding Dev",
@@ -595,15 +595,16 @@ public class HardModeBadgeService {
 
         List<HardModeBadge> hardModeBadges = hardModeBadgeRepository.findByUserId(userId);
         User user = userRepository.findById(userId).orElse(null);
-        
-        System.out.println("[HardModeBadgeService] 📊 Found " + (hardModeBadges != null ? hardModeBadges.size() : 0) + " hard-mode badges");
+
+        System.out.println("[HardModeBadgeService] 📊 Found " + (hardModeBadges != null ? hardModeBadges.size() : 0)
+                + " hard-mode badges");
 
         if (hardModeBadges == null) {
             hardModeBadges = new ArrayList<>();
         }
 
         List<Map<String, Object>> result = new ArrayList<>();
-        
+
         // ✅ STEP 1: Add all hard-mode badges from database
         result.addAll(hardModeBadges.stream().map(badge -> {
             Map<String, Object> badgeInfo = new HashMap<>();
@@ -629,26 +630,27 @@ public class HardModeBadgeService {
 
             return badgeInfo;
         }).collect(Collectors.toList()));
-        
+
         // ✅ STEP 2: Add power-five badges from user.badges array
         if (user != null && user.getBadges() != null) {
-            List<String> powerFiveBadges = Arrays.asList("Founding Dev", "Campus Catalyst", "Pod Pioneer", "Bridge Builder");
-            
+            List<String> powerFiveBadges = Arrays.asList("Founding Dev", "Campus Catalyst", "Pod Pioneer",
+                    "Bridge Builder");
+
             for (String badgeName : powerFiveBadges) {
                 // Convert title case to kebab-case for ID matching
                 String badgeId = badgeName.toLowerCase().replace(" ", "-");
-                
+
                 // Skip if already included from hard-mode collection
                 boolean alreadyAdded = result.stream()
-                    .anyMatch(b -> badgeId.equals(b.get("badgeId")));
-                    
+                        .anyMatch(b -> badgeId.equals(b.get("badgeId")));
+
                 if (!alreadyAdded) {
                     boolean isUnlocked = user.getBadges().contains(badgeName);
-                    
+
                     Map<String, Object> powerFiveBadge = new HashMap<>();
                     powerFiveBadge.put("badgeId", badgeId);
                     powerFiveBadge.put("badgeName", badgeName);
-                    
+
                     // Get tier and visualStyle from definitions
                     BadgeDefinition def = BADGE_DEFINITIONS.get(badgeId);
                     if (def != null) {
@@ -658,22 +660,22 @@ public class HardModeBadgeService {
                         powerFiveBadge.put("tier", "EPIC");
                         powerFiveBadge.put("visualStyle", "gold-glow");
                     }
-                    
+
                     powerFiveBadge.put("progress", Map.of("current", isUnlocked ? 1 : 0, "total", 1));
                     powerFiveBadge.put("isUnlocked", isUnlocked);
                     powerFiveBadge.put("isEquipped", isUnlocked); // Power-five badges auto-equipped when unlocked
                     powerFiveBadge.put("status", isUnlocked ? "equipped" : "locked");
                     powerFiveBadge.put("unlockedAt", null);
-                    
+
                     result.add(powerFiveBadge);
-                    
+
                     if (isUnlocked) {
                         System.out.println("[HardModeBadgeService] ✅ Added power-five badge: " + badgeName);
                     }
                 }
             }
         }
-        
+
         System.out.println("[HardModeBadgeService] 🎯 Total badges returned: " + result.size());
         return result;
     }
