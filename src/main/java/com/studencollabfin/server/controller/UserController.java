@@ -68,9 +68,10 @@ public class UserController {
         try {
             User user = userService.findById(userId);
             return ResponseEntity.ok(Map.of(
-                    "currentXP", user.getXp(),
+                    "xp", user.getXp(),
                     "level", user.getLevel(),
-                    "nextLevelXP", 100 - user.getXp()));
+                    "totalXp", user.getTotalXp() != null ? user.getTotalXp() : 0,
+                    "xpMultiplier", user.getXpMultiplier() != null ? user.getXpMultiplier() : 1.0));
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
