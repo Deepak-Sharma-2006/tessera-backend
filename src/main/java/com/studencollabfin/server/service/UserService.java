@@ -117,6 +117,12 @@ public class UserService implements UserDetailsService {
         existingUser.setLinkedinUrl(profileData.getLinkedinUrl());
         existingUser.setGithubUrl(profileData.getGithubUrl());
         existingUser.setPortfolioUrl(profileData.getPortfolioUrl());
+
+        // ✅ PHASE 1 FIX: Save profile picture URL if provided
+        if (profileData.getProfilePicUrl() != null) {
+            existingUser.setProfilePicUrl(profileData.getProfilePicUrl());
+        }
+
         existingUser.setProfileCompleted(true);
 
         return userRepository.save(existingUser);
