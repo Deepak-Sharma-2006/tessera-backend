@@ -105,20 +105,43 @@ public class UserService implements UserDetailsService {
         User existingUser = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Update only the allowed fields
-        existingUser.setFullName(profileData.getFullName());
-        existingUser.setCollegeName(profileData.getCollegeName());
-        existingUser.setYearOfStudy(profileData.getYearOfStudy());
-        existingUser.setDepartment(profileData.getDepartment());
-        existingUser.setSkills(profileData.getSkills());
-        existingUser.setRolesOpenTo(profileData.getRolesOpenTo());
-        existingUser.setGoals(profileData.getGoals());
-        existingUser.setExcitingTags(profileData.getExcitingTags());
-        existingUser.setLinkedinUrl(profileData.getLinkedinUrl());
-        existingUser.setGithubUrl(profileData.getGithubUrl());
-        existingUser.setPortfolioUrl(profileData.getPortfolioUrl());
-
-        // ✅ PHASE 1 FIX: Save profile picture URL if provided
+        // ✅ FIX: Only update fields that are actually provided (not null)
+        // fullName and collegeName are immutable after initial setup
+        if (profileData.getFullName() != null) {
+            existingUser.setFullName(profileData.getFullName());
+        }
+        if (profileData.getCollegeName() != null) {
+            existingUser.setCollegeName(profileData.getCollegeName());
+        }
+        
+        // Update editable profile fields
+        if (profileData.getYearOfStudy() != null) {
+            existingUser.setYearOfStudy(profileData.getYearOfStudy());
+        }
+        if (profileData.getDepartment() != null) {
+            existingUser.setDepartment(profileData.getDepartment());
+        }
+        if (profileData.getSkills() != null) {
+            existingUser.setSkills(profileData.getSkills());
+        }
+        if (profileData.getRolesOpenTo() != null) {
+            existingUser.setRolesOpenTo(profileData.getRolesOpenTo());
+        }
+        if (profileData.getGoals() != null) {
+            existingUser.setGoals(profileData.getGoals());
+        }
+        if (profileData.getExcitingTags() != null) {
+            existingUser.setExcitingTags(profileData.getExcitingTags());
+        }
+        if (profileData.getLinkedinUrl() != null) {
+            existingUser.setLinkedinUrl(profileData.getLinkedinUrl());
+        }
+        if (profileData.getGithubUrl() != null) {
+            existingUser.setGithubUrl(profileData.getGithubUrl());
+        }
+        if (profileData.getPortfolioUrl() != null) {
+            existingUser.setPortfolioUrl(profileData.getPortfolioUrl());
+        }
         if (profileData.getProfilePicUrl() != null) {
             existingUser.setProfilePicUrl(profileData.getProfilePicUrl());
         }
