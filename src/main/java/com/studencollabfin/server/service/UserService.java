@@ -113,7 +113,7 @@ public class UserService implements UserDetailsService {
         if (profileData.getCollegeName() != null) {
             existingUser.setCollegeName(profileData.getCollegeName());
         }
-        
+
         // Update editable profile fields
         if (profileData.getYearOfStudy() != null) {
             existingUser.setYearOfStudy(profileData.getYearOfStudy());
@@ -144,6 +144,14 @@ public class UserService implements UserDetailsService {
         }
         if (profileData.getProfilePicUrl() != null) {
             existingUser.setProfilePicUrl(profileData.getProfilePicUrl());
+        }
+        // ✅ NEW: Update featured badges (max 2 for profile showcase)
+        if (profileData.getFeaturedBadges() != null) {
+            existingUser.setFeaturedBadges(profileData.getFeaturedBadges());
+        }
+        // ✅ NEW: Update displayed badges (max 3 for public profile)
+        if (profileData.getDisplayedBadges() != null) {
+            existingUser.setDisplayedBadges(profileData.getDisplayedBadges());
         }
 
         existingUser.setProfileCompleted(true);
