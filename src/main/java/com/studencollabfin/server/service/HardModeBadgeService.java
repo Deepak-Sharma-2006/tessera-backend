@@ -297,7 +297,76 @@ public class HardModeBadgeService {
                             "🎯 " + badge.getBadgeName()
                                     + " criteria unlocked! Use /api/badges/hard-mode/unlock to equip.",
                             "timestamp", System.currentTimeMillis()));
+
+            // Keep hard-mode unlocks on the same stream as core badges.
+            broadcastBadgeAddedEvent(
+                    userId,
+                    badge,
+                    "🎯 " + badge.getBadgeName() + " criteria met!");
         }
+    }
+
+    /**
+     * Generic hard-mode event dispatcher used by other services/controllers.
+     */
+    public void trackEvent(String userId, String eventType, Map<String, Object> metadata) {
+        if (userId == null || userId.isEmpty() || eventType == null || eventType.isEmpty()) {
+            return;
+        }
+
+        switch (eventType) {
+            case "reply":
+            case "help-needed-first-reply":
+            case "fast-reply":
+            case "midnight-reply":
+                trackReplyAction(userId, eventType, metadata != null ? metadata : Map.of());
+                break;
+
+            case "resource-upload":
+            case "upload":
+                incrementUserStatAndCheck(userId, "pinnedResources", "resource-titan");
+                break;
+
+            case "team-activity":
+            case "team-join":
+                incrementUserStatAndCheck(userId, "activeCollabRooms", "team-engine");
+                break;
+
+            case "discussion-start":
+                incrementBadgeProgressAndCheck(userId, "discussion-architect");
+                break;
+
+            default:
+                System.out.println("[HardModeBadgeService] ℹ️ Unknown event type ignored: " + eventType);
+        }
+    }
+
+    private void incrementBadgeProgressAndCheck(String userId, String badgeId) {
+        HardModeBadge badge = hardModeBadgeRepository.findByUserIdAndBadgeId(userId, badgeId).orElse(null);
+        if (badge == null) {
+            return;
+        }
+
+        badge.setProgressCurrent(badge.getProgressCurrent() + 1);
+        hardModeBadgeRepository.save(badge);
+        checkAndUnlockBadgeCriteria(userId, badgeId);
+    }
+
+    private void incrementUserStatAndCheck(String userId, String statKey, String badgeId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            return;
+        }
+
+        if (user.getStatsMap() == null) {
+            user.setStatsMap(new HashMap<>());
+        }
+
+        int currentValue = user.getStatsMap().getOrDefault(statKey, 0);
+        user.getStatsMap().put(statKey, currentValue + 1);
+        userRepository.save(user);
+
+        checkAndUnlockBadgeCriteria(userId, badgeId);
     }
 
     /**
@@ -402,34 +471,45 @@ public class HardModeBadgeService {
         user.setTotalReplies(user.getTotalReplies() + 1);
         user.setWeeklyReplies(user.getWeeklyReplies() + 1);
 
-        // Update badge progress based on reply type
+        boolean isMidnight = readBooleanFlag(metadata, "midnight");
+        boolean isFast = readBooleanFlag(metadata, "fast");
+        boolean isHelp = readBooleanFlag(metadata, "help");
+
+        // Backward-compatible aliases
+        if ("midnight-reply".equals(replyType)) {
+            isMidnight = true;
+        }
+        if ("fast-reply".equals(replyType)) {
+            isFast = true;
+        }
+        if ("help-needed-first-reply".equals(replyType)) {
+            isHelp = true;
+        }
+
+        // Update badge progress based on context and reply type
         switch (replyType) {
             case "help-needed-first-reply":
                 user.getStatsMap().put("helpNeededReplies",
                         user.getStatsMap().getOrDefault("helpNeededReplies", 0) + 1);
                 break;
 
-            case "fast-reply":
-                // Under 30 seconds
-                HardModeBadge ultraResponder = hardModeBadgeRepository.findByUserIdAndBadgeId(userId, "ultra-responder")
-                        .orElse(null);
-                if (ultraResponder != null) {
-                    ultraResponder.setProgressCurrent(ultraResponder.getProgressCurrent() + 1);
-                    hardModeBadgeRepository.save(ultraResponder);
-                    checkAndUnlockBadgeCriteria(userId, "ultra-responder");
-                }
+            case "reply":
+                // Context-driven processing handled below.
                 break;
+        }
 
-            case "midnight-reply":
-                // Between 2-4 AM
-                HardModeBadge midnightLegend = hardModeBadgeRepository.findByUserIdAndBadgeId(userId, "midnight-legend")
-                        .orElse(null);
-                if (midnightLegend != null) {
-                    midnightLegend.setProgressCurrent(midnightLegend.getProgressCurrent() + 1);
-                    hardModeBadgeRepository.save(midnightLegend);
-                    checkAndUnlockBadgeCriteria(userId, "midnight-legend");
-                }
-                break;
+        if (isHelp) {
+            user.getStatsMap().put("helpNeededReplies",
+                    user.getStatsMap().getOrDefault("helpNeededReplies", 0) + 1);
+        }
+
+        if (isFast) {
+            incrementBadgeProgressAndCheck(userId, "ultra-responder");
+            incrementBadgeProgressAndCheck(userId, "first-responder");
+        }
+
+        if (isMidnight) {
+            incrementBadgeProgressAndCheck(userId, "midnight-legend");
         }
 
         // Check criteria for affected badges
@@ -460,6 +540,21 @@ public class HardModeBadgeService {
         } catch (Exception e) {
             System.err.println("[HardModeBadgeService] ⚠️ Failed to broadcast stat update: " + e.getMessage());
         }
+    }
+
+    private boolean readBooleanFlag(Map<String, Object> metadata, String key) {
+        if (metadata == null || !metadata.containsKey(key)) {
+            return false;
+        }
+
+        Object value = metadata.get(key);
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value instanceof String) {
+            return Boolean.parseBoolean((String) value);
+        }
+        return false;
     }
 
     /**
@@ -684,14 +779,22 @@ public class HardModeBadgeService {
      * Broadcast badge unlock to user via WebSocket.
      */
     private void broadcastBadgeUnlock(String userId, HardModeBadge badge) {
+        broadcastBadgeAddedEvent(
+                userId,
+                badge,
+                "🎉 " + badge.getBadgeName() + " badge unlocked and equipped!");
+    }
+
+    private void broadcastBadgeAddedEvent(String userId, HardModeBadge badge, String message) {
         try {
             messagingTemplate.convertAndSendToUser(
                     userId, "/queue/badge-unlock",
                     Map.of(
+                            "badgeId", badge.getBadgeId(),
                             "badgeName", badge.getBadgeName(),
                             "tier", badge.getTier(),
                             "visualStyle", badge.getVisualStyle(),
-                            "message", "🎉 " + badge.getBadgeName() + " badge unlocked and equipped!",
+                            "message", message,
                             "timestamp", System.currentTimeMillis()));
         } catch (Exception e) {
             System.err.println("[HardModeBadgeService] ⚠️ WebSocket broadcast failed: " + e.getMessage());

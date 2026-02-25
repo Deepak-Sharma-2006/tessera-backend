@@ -320,6 +320,7 @@ public class CollabPodController {
 
                 // ✅ Unlock Pod Pioneer badge on first pod join
                 achievementService.onJoinPod(userId);
+                achievementService.checkHardMode(userId, "team-activity", java.util.Map.of("podId", id));
 
                 return ResponseEntity.ok(java.util.Map.of("message", "Successfully joined pod", "pod", updatedPod));
             } catch (com.studencollabfin.server.exception.CooldownException e) {
@@ -551,6 +552,7 @@ public class CollabPodController {
             }
 
             CollabPod updatedPod = collabPodService.joinPod(id, userId);
+            achievementService.checkHardMode(userId, "team-activity", java.util.Map.of("podId", id));
             return ResponseEntity.ok(updatedPod);
 
         } catch (BannedFromPodException e) {

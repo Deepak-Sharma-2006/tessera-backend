@@ -1,11 +1,17 @@
 package com.studencollabfin.server.service;
 
 import com.studencollabfin.server.model.Comment;
+import com.studencollabfin.server.model.Post;
+import com.studencollabfin.server.model.PostType;
+import com.studencollabfin.server.model.SocialPost;
 import com.studencollabfin.server.repository.CommentRepository;
+import com.studencollabfin.server.repository.PostRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.HashMap;
@@ -16,8 +22,10 @@ public class CommentService {
     @Autowired
     private CommentRepository commentRepository;
 
-    @Autowired(required = false)
-    private HardModeBadgeService hardModeBadgeService;
+    @Autowired
+    private AchievementService achievementService;
+    @Autowired
+    private PostRepository postRepository;
 
     /**
      * Get top-level comments for a post (no parent)
@@ -45,18 +53,28 @@ public class CommentService {
      * Add a comment - with proper categorization
      */
     public Comment addComment(Comment comment) {
-        comment.setCreatedAt(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        comment.setCreatedAt(now);
         Comment savedComment = commentRepository.save(comment);
 
-        // ✅ TRACK REPLY: Update badge progress
-        if (hardModeBadgeService != null && comment.getAuthorId() != null) {
+        // ✅ TRACK REPLY CONTEXT: Dispatch one contextual hard-mode reply event
+        if (comment.getAuthorId() != null) {
             try {
-                // Track the reply for badge progress
+                Post parentPost = getParentPost(comment.getPostId());
                 Map<String, Object> metadata = new HashMap<>();
                 metadata.put("postType", comment.getPostType());
                 metadata.put("scope", comment.getScope());
 
-                hardModeBadgeService.trackReplyAction(comment.getAuthorId(), "reply", metadata);
+                boolean isMidnight = isMidnightReply(now);
+                boolean isFast = isFastReply(parentPost, now);
+                boolean isHelp = isHelpPost(parentPost, comment);
+
+                metadata.put("midnight", isMidnight);
+                metadata.put("fast", isFast);
+                metadata.put("help", isHelp);
+
+                achievementService.checkHardMode(comment.getAuthorId(), "reply", metadata);
+
                 System.out.println(
                         "[CommentService] ✅ Reply tracked for badge progress - user: " + comment.getAuthorId());
             } catch (Exception e) {
@@ -65,6 +83,36 @@ public class CommentService {
         }
 
         return savedComment;
+    }
+
+    private boolean isMidnightReply(LocalDateTime now) {
+        LocalTime time = now.toLocalTime();
+        return !time.isBefore(LocalTime.of(0, 0)) && time.isBefore(LocalTime.of(4, 0));
+    }
+
+    private Post getParentPost(String postId) {
+        if (postId == null || postId.isEmpty()) {
+            return null;
+        }
+        return postRepository.findById(postId).orElse(null);
+    }
+
+    private boolean isFastReply(Post post, LocalDateTime now) {
+        if (post == null || post.getCreatedAt() == null) {
+            return false;
+        }
+
+        Duration delta = Duration.between(post.getCreatedAt(), now);
+        return !delta.isNegative() && delta.toMinutes() < 5;
+    }
+
+    private boolean isHelpPost(Post post, Comment comment) {
+        if (post instanceof SocialPost socialPost && socialPost.getType() == PostType.ASK_HELP) {
+            return true;
+        }
+
+        String postType = comment.getPostType();
+        return postType != null && postType.toLowerCase().contains("help");
     }
 
     /**

@@ -171,6 +171,19 @@ public class PostService {
         // Save the post first to get its ID
         Post savedPost = postRepository.save(post);
 
+        // Hard-mode trigger: discussion authoring activity
+        try {
+            if (savedPost instanceof SocialPost social
+                    && social.getType() == com.studencollabfin.server.model.PostType.DISCUSSION) {
+                achievementService.checkHardMode(
+                        authorId,
+                        "discussion-start",
+                        java.util.Map.of("postId", savedPost.getId()));
+            }
+        } catch (Exception ex) {
+            System.err.println("⚠️ Failed to dispatch discussion-start hard-mode event: " + ex.getMessage());
+        }
+
         // ✅ FCM: POLL notifications (topic-based)
         try {
             if (savedPost instanceof SocialPost social

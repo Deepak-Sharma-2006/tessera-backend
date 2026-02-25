@@ -19,6 +19,8 @@ public class ProjectService {
 
     @Autowired
     private UserService userService;
+    @Autowired
+    private AchievementService achievementService;
 
     public Project createProject(String leaderId, Project project) {
         if (leaderId != null) {
@@ -35,7 +37,9 @@ public class ProjectService {
         }
         project.getMemberIds().add(leaderId);
 
-        return projectRepository.save(project);
+        Project saved = projectRepository.save(project);
+        achievementService.checkHardMode(leaderId, "team-activity", null);
+        return saved;
     }
 
     public Project joinProject(String projectId, String userId) {
@@ -51,7 +55,9 @@ public class ProjectService {
                 project.getMemberIds().add(userId);
             }
 
-            return projectRepository.save(project);
+            Project saved = projectRepository.save(project);
+            achievementService.checkHardMode(userId, "team-activity", null);
+            return saved;
         }
         throw new RuntimeException("Project not found");
     }

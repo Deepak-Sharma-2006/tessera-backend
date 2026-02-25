@@ -31,6 +31,25 @@ public class AchievementService {
     private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
     @Autowired
     private GamificationService gamificationService;
+    @Autowired(required = false)
+    private HardModeBadgeService hardModeBadgeService;
+
+    public void checkHardMode(String userId, String eventType) {
+        checkHardMode(userId, eventType, Map.of());
+    }
+
+    public void checkHardMode(String userId, String eventType, Map<String, Object> metadata) {
+        if (hardModeBadgeService == null || userId == null || userId.isEmpty() || eventType == null
+                || eventType.isEmpty()) {
+            return;
+        }
+
+        try {
+            hardModeBadgeService.trackEvent(userId, eventType, metadata != null ? metadata : Map.of());
+        } catch (Exception e) {
+            System.err.println("[BadgeService] ⚠️ Hard-mode event dispatch failed: " + e.getMessage());
+        }
+    }
 
     public void initializeUserAchievements(String userId) {
         // --- Power Five MVP ---

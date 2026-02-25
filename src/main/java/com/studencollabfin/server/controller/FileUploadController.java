@@ -1,5 +1,6 @@
 package com.studencollabfin.server.controller;
 
+import com.studencollabfin.server.service.AchievementService;
 import com.studencollabfin.server.service.FirebaseStorageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -18,6 +19,8 @@ public class FileUploadController {
 
     @Autowired
     private FirebaseStorageService firebaseStorageService;
+    @Autowired
+    private AchievementService achievementService;
 
     /**
      * POST /api/uploads/pod-files
@@ -31,7 +34,8 @@ public class FileUploadController {
      */
     @PostMapping("/pod-files")
     public ResponseEntity<Map<String, Object>> uploadPodFile(
-            @RequestParam(value = "file", required = false) MultipartFile file) {
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestHeader(value = "X-User-Id", required = false) String userId) {
         Map<String, Object> response = new HashMap<>();
 
         System.out.println("========== FIREBASE FILE UPLOAD START ==========");
@@ -59,6 +63,11 @@ public class FileUploadController {
             // Determine attachment type based on MIME type
             String attachmentType = determineAttachmentType(file.getContentType());
             System.out.println("Attachment type: " + attachmentType);
+
+            // Hard-mode progress: upload events (Resource Titan path)
+            if (userId != null && !userId.isEmpty()) {
+                achievementService.checkHardMode(userId, "resource-upload", null);
+            }
 
             // Build response
             response.put("url", publicUrl);
