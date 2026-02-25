@@ -48,6 +48,8 @@ yarn-debug.log*
 Thumbs.db
 .DS_Store
 
+# Firebase Security
+google-services.json
 # Uploads (User-generated files)
 uploads/
 

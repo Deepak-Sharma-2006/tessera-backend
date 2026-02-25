@@ -29,6 +29,9 @@ public class UserService implements UserDetailsService {
     @Autowired(required = false)
     private HardModeBadgeService hardModeBadgeService;
 
+    @Autowired(required = false)
+    private FirebaseStorageService firebaseStorageService;
+
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
         User user = userRepository.findByEmail(email)
@@ -142,8 +145,42 @@ public class UserService implements UserDetailsService {
         if (profileData.getPortfolioUrl() != null) {
             existingUser.setPortfolioUrl(profileData.getPortfolioUrl());
         }
+        // ✅ HYBRID MIGRATION: Base64 Interception for Legacy Web Profile Pictures
         if (profileData.getProfilePicUrl() != null) {
-            existingUser.setProfilePicUrl(profileData.getProfilePicUrl());
+            String profilePicUrl = profileData.getProfilePicUrl();
+
+            // Condition A: If it starts with "http", it's a URL (from Flutter) - save as is
+            if (profilePicUrl.startsWith("http://") || profilePicUrl.startsWith("https://")) {
+                System.out.println("✅ [PROFILE_PIC] Direct URL detected (Flutter): " + profilePicUrl);
+                existingUser.setProfilePicUrl(profilePicUrl);
+            }
+            // Condition B: If it starts with "data:", it's Base64 (from Web) - upload to
+            // Firebase
+            else if (profilePicUrl.startsWith("data:")) {
+                System.out.println("🔥 [PROFILE_PIC] Base64 detected (Web) - uploading to Firebase...");
+                try {
+                    if (firebaseStorageService != null) {
+                        String firebaseUrl = firebaseStorageService.uploadBase64(profilePicUrl);
+                        System.out.println("✅ [PROFILE_PIC] Base64 uploaded to Firebase: " + firebaseUrl);
+                        existingUser.setProfilePicUrl(firebaseUrl);
+                    } else {
+                        System.err
+                                .println("❌ [PROFILE_PIC] FirebaseStorageService not available - saving Base64 as is");
+                        existingUser.setProfilePicUrl(profilePicUrl);
+                    }
+                } catch (Exception e) {
+                    System.err.println("❌ [PROFILE_PIC] Firebase upload failed: " + e.getMessage());
+                    e.printStackTrace();
+                    // Fallback: save Base64 as is if Firebase fails
+                    existingUser.setProfilePicUrl(profilePicUrl);
+                }
+            }
+            // Fallback: Unknown format - save as is
+            else {
+                System.out.println("⚠️ [PROFILE_PIC] Unknown format - saving as is: "
+                        + profilePicUrl.substring(0, Math.min(50, profilePicUrl.length())));
+                existingUser.setProfilePicUrl(profilePicUrl);
+            }
         }
         // ✅ NEW: Update featured badges (max 2 for profile showcase)
         if (profileData.getFeaturedBadges() != null) {

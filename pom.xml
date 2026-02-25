@@ -67,6 +67,12 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Firebase Admin SDK for server-side file storage -->
+        <dependency>
+            <groupId>com.google.firebase</groupId>
+            <artifactId>firebase-admin</artifactId>
+            <version>9.2.0</version>
+        </dependency>
         <!-- OAuth2 resource server dependency removed (if not using JWT) -->
     </dependencies>
     <build>
