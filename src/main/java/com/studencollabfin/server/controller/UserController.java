@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.List;
@@ -31,6 +32,18 @@ public class UserController {
 
     @Autowired
     private UserRepository userRepository;
+
+    /**
+     * Updates the FCM token for the authenticated user
+     */
+    @PostMapping("/fcm-token")
+    public ResponseEntity<?> updateFcmToken(@RequestBody Map<String, String> payload, Authentication auth) {
+        String token = payload.get("fcmToken");
+        User user = userService.findByEmail(auth.getName());
+        user.setFcmToken(token);
+        userRepository.save(user);
+        return ResponseEntity.ok().build();
+    }
 
     @GetMapping("/{userId}")
     public ResponseEntity<?> getProfile(@PathVariable String userId) {

@@ -19,6 +19,8 @@ import java.util.HashMap;
 @AllArgsConstructor
 @Document(collection = "users")
 public class User {
+    // FCM Token for push notifications
+    private String fcmToken;
     @Id
     private String id; // Maps to MongoDB _id
     private String fullName; // e.g., "Taksh"
