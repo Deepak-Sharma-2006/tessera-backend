@@ -15,6 +15,7 @@ import org.springframework.security.core.Authentication;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.List;
+import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api/users")
@@ -37,12 +38,11 @@ public class UserController {
      * Updates the FCM token for the authenticated user
      */
     @PostMapping("/fcm-token")
-    public ResponseEntity<?> updateFcmToken(@RequestBody Map<String, String> payload, Authentication auth) {
-        String token = payload.get("fcmToken");
-        User user = userService.findByEmail(auth.getName());
-        user.setFcmToken(token);
-        userRepository.save(user);
-        return ResponseEntity.ok().build();
+    @SuppressWarnings("unchecked")
+    public ResponseEntity<?> updateFcmToken(
+            @RequestBody(required = false) Object payload,
+            Authentication auth) {
+        return handleFcmTokenUpdate(payload, null, auth);
     }
 
     /**
@@ -50,8 +50,100 @@ public class UserController {
      * Keeps backward/forward compatibility between mobile/web clients.
      */
     @PutMapping("/fcm-token")
-    public ResponseEntity<?> updateFcmTokenPut(@RequestBody Map<String, String> payload, Authentication auth) {
-        return updateFcmToken(payload, auth);
+    public ResponseEntity<?> updateFcmTokenPut(
+            @RequestBody(required = false) Object payload,
+            Authentication auth) {
+        return handleFcmTokenUpdate(payload, null, auth);
+    }
+
+    /**
+     * Path-based alias used by some mobile clients.
+     */
+    @PutMapping("/{id}/fcm-token")
+    public ResponseEntity<?> updateFcmTokenForUser(
+            @PathVariable("id") String userId,
+            @RequestBody(required = false) Object payload,
+            Authentication auth) {
+        return handleFcmTokenUpdate(payload, userId, auth);
+    }
+
+    @PatchMapping("/{id}/fcm-token")
+    public ResponseEntity<?> patchFcmTokenForUser(
+            @PathVariable("id") String userId,
+            @RequestBody(required = false) Object payload,
+            Authentication auth) {
+        return handleFcmTokenUpdate(payload, userId, auth);
+    }
+
+    @PutMapping("/notifications/token")
+    public ResponseEntity<?> updateNotificationTokenAlias(
+            @RequestBody(required = false) Object payload,
+            Authentication auth) {
+        return handleFcmTokenUpdate(payload, null, auth);
+    }
+
+    private ResponseEntity<?> handleFcmTokenUpdate(Object payload, String pathUserId, Authentication auth) {
+        Map<String, Object> request = new HashMap<>();
+
+        if (payload instanceof Map<?, ?> payloadMap) {
+            for (Map.Entry<?, ?> entry : payloadMap.entrySet()) {
+                if (entry.getKey() != null) {
+                    request.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+            }
+        } else if (payload instanceof String rawToken && !rawToken.isBlank()) {
+            request.put("token", rawToken);
+        }
+
+        String token = asText(request.get("fcmToken"));
+        if (token == null || token.isBlank()) {
+            token = asText(request.get("token"));
+        }
+
+        String payloadUserId = asText(request.get("userId"));
+        String resolvedUserId = (pathUserId != null && !pathUserId.isBlank()) ? pathUserId : payloadUserId;
+
+        if (token == null || token.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Missing token in request body. Use {\"token\":\"...\"} or {\"fcmToken\":\"...\"}."));
+        }
+
+        try {
+            User user;
+            if (resolvedUserId != null && !resolvedUserId.isBlank()) {
+                user = userService.findById(resolvedUserId);
+            } else if (auth != null && auth.getName() != null && !auth.getName().isBlank()) {
+                user = userService.findByEmail(auth.getName());
+            } else {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Missing user context. Provide userId or authenticated user."));
+            }
+
+            user.setFcmToken(token);
+            userRepository.save(user);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "FCM token updated"));
+        } catch (Exception e) {
+            System.err.println("[UserController] ⚠️ Failed to fully process FCM token update: " + e.getMessage());
+
+            // Never fail mobile startup for token sync side-effects.
+            return ResponseEntity.ok(Map.of(
+                    "success", false,
+                    "message", "FCM token sync accepted, but side effects failed",
+                    "error", e.getMessage()));
+        }
+    }
+
+    private String asText(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value);
+        return text.isBlank() ? null : text;
     }
 
     /**
