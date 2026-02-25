@@ -10,7 +10,8 @@ public enum XPAction {
     RECEIVE_ENDORSEMENT(20),
     CREATE_EVENT(150),
     MENTOR_BONUS(50),
-    PROJECT_COMPLETE(200);
+    PROJECT_COMPLETE(200),
+    BADGE_UNLOCK(25);
 
     private final int points;
 

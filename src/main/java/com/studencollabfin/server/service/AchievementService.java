@@ -29,6 +29,8 @@ public class AchievementService {
     private MessageRepository messageRepository;
     @Autowired(required = false)
     private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
+    @Autowired
+    private GamificationService gamificationService;
 
     public void initializeUserAchievements(String userId) {
         // --- Power Five MVP ---
@@ -82,6 +84,14 @@ public class AchievementService {
                 user.getBadges().add(title);
                 userRepository.save(user);
                 System.out.println("[BadgeService] ✅ Added '" + title + "' to user.badges array for " + userId);
+
+                // Award XP for badge unlock
+                try {
+                    gamificationService.awardXp(userId, com.studencollabfin.server.model.XPAction.BADGE_UNLOCK);
+                    System.out.println("[BadgeService] 💰 Awarded 25 XP for " + title + " unlock");
+                } catch (Exception e) {
+                    System.err.println("[BadgeService] ⚠️ Failed to award XP: " + e.getMessage());
+                }
 
                 // ✅ REAL-TIME: Broadcast badge unlock via WebSocket
                 if (messagingTemplate != null) {
@@ -180,6 +190,14 @@ public class AchievementService {
             updated = true;
             changes.add("✅ AUTO-UNLOCKED 'Founding Dev' (isDev=true)");
             System.out.println("[BadgeSync] 🔓 Auto-unlocked Founding Dev for user " + user.getId());
+
+            // Award XP for badge unlock
+            try {
+                gamificationService.awardXp(user.getId(), com.studencollabfin.server.model.XPAction.BADGE_UNLOCK);
+                System.out.println("[BadgeSync] 💰 Awarded 25 XP for Founding Dev unlock");
+            } catch (Exception e) {
+                System.err.println("[BadgeSync] ⚠️ Failed to award XP: " + e.getMessage());
+            }
         }
         // Remove if isDev=false
         if (!user.isDev() && currentBadges.contains("Founding Dev")) {
@@ -194,6 +212,14 @@ public class AchievementService {
             updated = true;
             changes.add("✅ AUTO-UNLOCKED 'Campus Catalyst' (role=COLLEGE_HEAD)");
             System.out.println("[BadgeSync] 🔓 Auto-unlocked Campus Catalyst for user " + user.getId());
+
+            // Award XP for badge unlock
+            try {
+                gamificationService.awardXp(user.getId(), com.studencollabfin.server.model.XPAction.BADGE_UNLOCK);
+                System.out.println("[BadgeSync] 💰 Awarded 25 XP for Campus Catalyst unlock");
+            } catch (Exception e) {
+                System.err.println("[BadgeSync] ⚠️ Failed to award XP: " + e.getMessage());
+            }
         }
         // Remove if role != COLLEGE_HEAD
         if (!"COLLEGE_HEAD".equals(user.getRole()) && currentBadges.contains("Campus Catalyst")) {
@@ -208,6 +234,14 @@ public class AchievementService {
             updated = true;
             changes.add("✅ AUTO-UNLOCKED 'Signal Guardian' (posts >= 5)");
             System.out.println("[BadgeSync] 🔓 Auto-unlocked Signal Guardian for user " + user.getId());
+
+            // Award XP for badge unlock
+            try {
+                gamificationService.awardXp(user.getId(), com.studencollabfin.server.model.XPAction.BADGE_UNLOCK);
+                System.out.println("[BadgeSync] 💰 Awarded 25 XP for Signal Guardian unlock");
+            } catch (Exception e) {
+                System.err.println("[BadgeSync] ⚠️ Failed to award XP: " + e.getMessage());
+            }
         }
         // Remove if posts < 5
         if (user.getPostsCount() < 5 && currentBadges.contains("Signal Guardian")) {
