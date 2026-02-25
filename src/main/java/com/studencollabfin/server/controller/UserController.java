@@ -45,6 +45,54 @@ public class UserController {
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Alias for clients that sync tokens via PUT.
+     * Keeps backward/forward compatibility between mobile/web clients.
+     */
+    @PutMapping("/fcm-token")
+    public ResponseEntity<?> updateFcmTokenPut(@RequestBody Map<String, String> payload, Authentication auth) {
+        return updateFcmToken(payload, auth);
+    }
+
+    /**
+     * Update notification preferences for the authenticated user
+     */
+    @PutMapping("/settings/notifications")
+    @SuppressWarnings("null")
+    public ResponseEntity<?> updateNotificationSettings(
+            @RequestBody Map<String, Boolean> payload,
+            Authentication auth) {
+        try {
+            User user = userService.findByEmail(auth.getName());
+
+            // Get or create preferences
+            User.NotificationPreferences prefs = user.getNotificationPreferences();
+            if (prefs == null) {
+                prefs = new User.NotificationPreferences();
+            }
+
+            // Update preferences from payload
+            if (payload.containsKey("allowInbox")) {
+                prefs.setAllowInbox(payload.get("allowInbox"));
+            }
+            if (payload.containsKey("allowDMs")) {
+                prefs.setAllowDMs(payload.get("allowDMs"));
+            }
+
+            user.setNotificationPreferences(prefs);
+            userRepository.save(user);
+
+            System.out.println("✅ [SETTINGS] Updated notification preferences for " + user.getEmail());
+            System.out.println("   allowInbox: " + prefs.isAllowInbox());
+            System.out.println("   allowDMs: " + prefs.isAllowDMs());
+
+            return ResponseEntity.ok(user);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error updating notification settings: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/{userId}")
     public ResponseEntity<?> getProfile(@PathVariable String userId) {
         try {

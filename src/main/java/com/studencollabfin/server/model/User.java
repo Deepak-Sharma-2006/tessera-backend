@@ -77,10 +77,36 @@ public class User {
     private Map<String, Integer> statsMap = new HashMap<>(); // Tracks: helpNeededReplies, pinnedResources,
                                                              // correctPolls, etc.
 
+    // Notification Preferences
+    private NotificationPreferences notificationPreferences;
+
     // Date fields - stored as LocalDateTime and serialized as ISO-8601
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime createdAt; // When the account was created
 
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime joinedDate; // Alias for createdAt for profile display
+
+    /**
+     * NotificationPreferences - Embedded class for user-controlled notification
+     * settings
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class NotificationPreferences {
+        private boolean allowInbox = true; // Default: enabled
+        private boolean allowDMs = true; // Default: enabled
+        // Note: Polls/Feed and Pods are managed client-side via topics
+    }
+
+    /**
+     * Get notification preferences with default fallback
+     */
+    public NotificationPreferences getNotificationPreferences() {
+        if (notificationPreferences == null) {
+            notificationPreferences = new NotificationPreferences();
+        }
+        return notificationPreferences;
+    }
 }

@@ -8,6 +8,7 @@ import com.studencollabfin.server.model.TeamFindingPost;
 import com.studencollabfin.server.model.CollabPod;
 import com.studencollabfin.server.repository.PostRepository;
 import com.studencollabfin.server.repository.CommentRepository;
+import com.studencollabfin.server.service.FcmNotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
@@ -22,6 +23,7 @@ public class PostService {
     private final EventService eventService;
     private final UserService userService;
     private final CommentService commentService;
+    private final FcmNotificationService fcmNotificationService;
 
     public SocialPost toggleLike(String postId, String userId) {
         Post post = getPostById(postId);
@@ -168,6 +170,51 @@ public class PostService {
 
         // Save the post first to get its ID
         Post savedPost = postRepository.save(post);
+
+        // ✅ FCM: POLL notifications (topic-based)
+        try {
+            if (savedPost instanceof SocialPost social
+                    && social.getType() == com.studencollabfin.server.model.PostType.POLL) {
+
+                String category = (social.getCategory() != null) ? social.getCategory() : "CAMPUS";
+                boolean isGlobal = "INTER".equalsIgnoreCase(category);
+
+                String topic;
+                if (isGlobal) {
+                    topic = "global_polls";
+                } else {
+                    String campusSegment = FcmNotificationService.toTopicSegment(savedPost.getCollege());
+                    topic = "campus_polls_" + campusSegment;
+                }
+
+                java.util.HashMap<String, String> data = new java.util.HashMap<>();
+                data.put("type", FcmNotificationService.TYPE_POLL);
+                data.put("category", category);
+                if (savedPost.getId() != null) {
+                    data.put("pollId", savedPost.getId());
+                    data.put("postId", savedPost.getId());
+                }
+                if (savedPost.getCollege() != null) {
+                    data.put("campusId", FcmNotificationService.toTopicSegment(savedPost.getCollege()));
+                    data.put("college", savedPost.getCollege());
+                }
+
+                String title = "New poll";
+                String body = (social.getTitle() != null && !social.getTitle().isBlank())
+                        ? social.getTitle()
+                        : "Tap to vote";
+
+                fcmNotificationService.sendToTopic(
+                        topic,
+                        title,
+                        body,
+                        data,
+                        FcmNotificationService.CHANNEL_POLLS,
+                        null);
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ [FCM] POLL notify failed: " + e.getMessage());
+        }
 
         // ✅ INCREMENT postsCount on user for Signal Guardian badge tracking
         try {

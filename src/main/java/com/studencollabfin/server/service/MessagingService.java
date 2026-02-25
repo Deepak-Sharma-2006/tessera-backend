@@ -13,6 +13,7 @@ import com.studencollabfin.server.dto.ConversationInviteResponse;
 
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,6 +29,9 @@ public class MessagingService {
     private UserRepository userRepository;
     @Autowired
     private AchievementService achievementService;
+
+    @Autowired
+    private FcmNotificationService fcmNotificationService;
 
     public List<Conversation> getUserConversations(String userId) {
         List<Conversation> conversations = conversationRepository.findByParticipantIdsContaining(userId);
@@ -168,7 +172,61 @@ public class MessagingService {
             // ✅ Check for Bridge Builder badge unlock (inter-college message)
             checkAndUnlockBridgeBuilder(senderId, conv);
         }
-        return messageRepository.save(msg);
+
+        Message saved = messageRepository.save(msg);
+
+        // ✅ FCM: DM notifications (token-based) with Android tag stacking per sender
+        try {
+            if (conversationId != null && senderId != null) {
+                Conversation conv = conversationRepository.findById(conversationId).orElse(null);
+                if (conv != null && conv.getParticipantIds() != null) {
+                    User sender = userRepository.findById(senderId).orElse(null);
+                    String senderNameSafe = (sender != null && sender.getFullName() != null)
+                            ? sender.getFullName()
+                            : "New message";
+
+                    for (String participantId : conv.getParticipantIds()) {
+                        if (participantId == null || participantId.equals(senderId)) {
+                            continue;
+                        }
+
+                        User recipient = userRepository.findById(participantId).orElse(null);
+                        if (recipient == null || recipient.getFcmToken() == null || recipient.getFcmToken().isBlank()) {
+                            continue;
+                        }
+
+                        String preview = (text != null && !text.isBlank())
+                                ? text
+                                : ((attachmentUrls != null && !attachmentUrls.isEmpty()) ? "Sent an attachment"
+                                        : "New message");
+
+                        HashMap<String, String> data = new HashMap<>();
+                        data.put("type", FcmNotificationService.TYPE_DM);
+                        data.put("conversationId", conversationId);
+                        data.put("senderId", senderId);
+                        if (sender != null && sender.getFullName() != null) {
+                            data.put("senderName", sender.getFullName());
+                        }
+                        if (saved.getId() != null) {
+                            data.put("messageId", saved.getId());
+                        }
+
+                        fcmNotificationService.sendToToken(
+                                recipient.getFcmToken(),
+                                senderNameSafe,
+                                preview,
+                                data,
+                                FcmNotificationService.CHANNEL_CHATS,
+                                senderId,
+                                recipient); // ✅ Pass recipient for preference check
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ [FCM] DM notify failed: " + e.getMessage());
+        }
+
+        return saved;
     }
 
     // ✅ NEW: Overload for backward compatibility (7 parameters)
@@ -294,6 +352,32 @@ public class MessagingService {
         } catch (Exception e) {
             System.err.println("WebSocket notification failed: " + e.getMessage());
             // Continue anyway - the invite was created
+        }
+
+        // ✅ FCM: INBOX notification for invite
+        try {
+            User sender = userRepository.findById(senderId).orElse(null);
+            User target = userRepository.findById(targetId).orElse(null);
+            if (target != null && target.getFcmToken() != null && !target.getFcmToken().isBlank()) {
+                String senderNameSafe = (sender != null && sender.getFullName() != null) ? sender.getFullName()
+                        : "Someone";
+
+                HashMap<String, String> data = new HashMap<>();
+                data.put("type", FcmNotificationService.TYPE_INBOX);
+                data.put("subType", "INVITE");
+                data.put("conversationId", conv.getId());
+
+                fcmNotificationService.sendToToken(
+                        target.getFcmToken(),
+                        "New invite",
+                        senderNameSafe + " sent you a collaboration request",
+                        data,
+                        FcmNotificationService.CHANNEL_UPDATES,
+                        null,
+                        target); // ✅ Pass target for preference check
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ [FCM] Invite notify failed: " + e.getMessage());
         }
 
         return conv;

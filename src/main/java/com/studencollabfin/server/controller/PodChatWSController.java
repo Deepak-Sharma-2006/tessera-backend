@@ -2,6 +2,7 @@ package com.studencollabfin.server.controller;
 
 import com.studencollabfin.server.model.Message;
 import com.studencollabfin.server.service.CollabPodService;
+import com.studencollabfin.server.service.FcmNotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -27,6 +28,7 @@ import org.springframework.stereotype.Controller;
 public class PodChatWSController {
     private final CollabPodService collabPodService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final FcmNotificationService fcmNotificationService;
 
     @SuppressWarnings("null")
     @MessageMapping("/pod.{podId}.chat")
@@ -53,6 +55,45 @@ public class PodChatWSController {
             System.out.println("📤 [WS] Broadcasting to: " + topicPath);
             messagingTemplate.convertAndSend(topicPath, savedMessage);
             System.out.println("✅ [WS] Broadcast complete");
+
+            // ✅ FCM: POD notifications (topic-based) with Android tag stacking per pod
+            try {
+                String senderNameSafe = (savedMessage.getSenderName() != null
+                        && !savedMessage.getSenderName().isBlank())
+                                ? savedMessage.getSenderName()
+                                : "New message";
+                String preview = (savedMessage.getText() != null && !savedMessage.getText().isBlank())
+                        ? savedMessage.getText()
+                        : ((savedMessage.getAttachmentUrls() != null && !savedMessage.getAttachmentUrls().isEmpty())
+                                ? "Sent an attachment"
+                                : "New message");
+
+                java.util.HashMap<String, String> data = new java.util.HashMap<>();
+                data.put("type", FcmNotificationService.TYPE_POD);
+                data.put("podId", podId);
+                if (savedMessage.getSenderId() != null) {
+                    data.put("senderId", savedMessage.getSenderId());
+                }
+                if (savedMessage.getSenderName() != null) {
+                    data.put("senderName", savedMessage.getSenderName());
+                }
+                if (savedMessage.getId() != null) {
+                    data.put("messageId", savedMessage.getId());
+                }
+
+                String podTopic = "pod_" + podId;
+                String tag = "pod_" + podId;
+
+                fcmNotificationService.sendToTopic(
+                        podTopic,
+                        senderNameSafe,
+                        preview,
+                        data,
+                        FcmNotificationService.CHANNEL_CHATS,
+                        tag);
+            } catch (Exception e) {
+                System.err.println("⚠️ [FCM] POD notify failed: " + e.getMessage());
+            }
 
             System.out.println("✓ Pod message handled for pod " + podId + ": " + savedMessage.getId());
         } catch (Exception e) {
