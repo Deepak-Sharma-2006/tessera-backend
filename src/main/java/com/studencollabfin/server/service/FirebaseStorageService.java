@@ -50,7 +50,7 @@ public class FirebaseStorageService {
 
                 System.out.println("🔥 [FIREBASE] Loading credentials from: " + serviceAccountPath);
 
-                FileInputStream serviceAccount = new FileInputStream(serviceAccountPath);
+                FileInputStream serviceAccount = new FileInputStream("/etc/secrets/google-services.json");
 
                 FirebaseOptions options = FirebaseOptions.builder()
                         .setCredentials(GoogleCredentials.fromStream(serviceAccount))
