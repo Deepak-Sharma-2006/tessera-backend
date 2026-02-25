@@ -54,7 +54,7 @@ public class FirebaseStorageService {
 
                 FirebaseOptions options = FirebaseOptions.builder()
                         .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-                        .setStorageBucket("tessera-76c5f.appspot.com") // Replace with your actual bucket name
+                        .setStorageBucket("tessera-76c5f.firebasestorage.app") // Replace with your actual bucket name
                         .build();
 
                 FirebaseApp.initializeApp(options);
