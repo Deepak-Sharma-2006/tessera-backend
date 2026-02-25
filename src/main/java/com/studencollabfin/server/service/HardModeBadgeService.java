@@ -6,6 +6,10 @@ import com.studencollabfin.server.repository.HardModeBadgeRepository;
 import com.studencollabfin.server.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
@@ -25,6 +29,7 @@ public class HardModeBadgeService {
     private final HardModeBadgeRepository hardModeBadgeRepository;
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final MongoTemplate mongoTemplate;
 
     // ==================== BADGE DEFINITIONS ====================
 
@@ -285,6 +290,10 @@ public class HardModeBadgeService {
             badge.setUnlockedAt(LocalDateTime.now());
             hardModeBadgeRepository.save(badge);
 
+            // Persist earned badge in user document BEFORE broadcasting events.
+            // Atomic addToSet prevents duplicates under concurrent triggers.
+            persistHardModeBadgeEarned(userId, badgeId);
+
             System.out.println(
                     "[HardModeBadgeService] ✅ Badge criteria met: " + badge.getBadgeName() + " for user " + userId);
 
@@ -303,6 +312,17 @@ public class HardModeBadgeService {
                     userId,
                     badge,
                     "🎯 " + badge.getBadgeName() + " criteria met!");
+        }
+    }
+
+    private void persistHardModeBadgeEarned(String userId, String badgeId) {
+        try {
+            Query query = new Query(Criteria.where("_id").is(userId));
+            Update update = new Update().addToSet("hardModeBadgesEarned", badgeId);
+            mongoTemplate.updateFirst(query, update, User.class);
+        } catch (Exception e) {
+            System.err.println(
+                    "[HardModeBadgeService] ⚠️ Failed to persist hard-mode badge in user doc: " + e.getMessage());
         }
     }
 
