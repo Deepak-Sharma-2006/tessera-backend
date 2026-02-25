@@ -257,9 +257,12 @@ public class AchievementService {
         if (updated) {
             System.out.println("\n🔄 BADGE ENFORCEMENT - User: " + user.getId());
             changes.forEach(System.out::println);
-            user.setBadges(currentBadges);
-            User savedUser = userRepository.save(user);
-            return savedUser;
+            // IMPORTANT: XP/level may have been updated via GamificationService.awardXp(),
+            // which loads+saves a separate User instance.
+            // Re-load the latest user before saving badges to avoid overwriting XP.
+            User latestUser = userRepository.findById(user.getId()).orElse(user);
+            latestUser.setBadges(currentBadges);
+            return userRepository.save(latestUser);
         } else {
             return user;
         }

@@ -410,16 +410,8 @@ public class UserController {
 
             if (!hasBadge) {
                 System.out.println("❌ Badge not found in user.badges! Badge: " + badgeId);
-                // Auto-unlock the badge if it's a known badge
-                if (user.getBadges() == null) {
-                    user.setBadges(new ArrayList<>());
-                }
-                // Only add if not already present
-                if (!user.getBadges().stream()
-                        .anyMatch(b -> normalizeBadgeName(b).equalsIgnoreCase(normalizedBadgeId))) {
-                    user.getBadges().add(normalizedBadgeId);
-                    System.out.println("✅ Auto-unlocking badge: " + normalizedBadgeId);
-                }
+                return ResponseEntity.badRequest()
+                        .body("Cannot feature badge not earned: " + badgeId);
             }
 
             // Toggle featured status with normalized names

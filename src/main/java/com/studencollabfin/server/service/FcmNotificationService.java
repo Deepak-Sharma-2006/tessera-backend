@@ -22,6 +22,7 @@ public class FcmNotificationService {
     public static final String CHANNEL_CHATS = "chats";
     public static final String CHANNEL_UPDATES = "updates";
     public static final String CHANNEL_POLLS = "polls";
+    public static final String CHANNEL_IMPORTANT = "channel_important";
 
     /**
      * Send notification to a specific user token with preference checks.
@@ -61,9 +62,7 @@ public class FcmNotificationService {
         if (androidTag != null && !androidTag.isBlank()) {
             androidNotif.setTag(androidTag);
         }
-        if (androidChannelId != null && !androidChannelId.isBlank()) {
-            androidNotif.setChannelId(androidChannelId);
-        }
+        androidNotif.setChannelId(CHANNEL_IMPORTANT);
 
         // 🔔 BADGE COUNT: Set notification count for app icon badge
         // TODO: Calculate actual unread count (DMs + Inbox) from UserService
@@ -81,6 +80,7 @@ public class FcmNotificationService {
                         .setBody(body)
                         .build())
                 .setAndroidConfig(AndroidConfig.builder()
+                        .setPriority(AndroidConfig.Priority.HIGH)
                         .setNotification(androidNotif.build())
                         .build())
                 .build();
@@ -110,9 +110,7 @@ public class FcmNotificationService {
         if (androidTag != null && !androidTag.isBlank()) {
             androidNotif.setTag(androidTag);
         }
-        if (androidChannelId != null && !androidChannelId.isBlank()) {
-            androidNotif.setChannelId(androidChannelId);
-        }
+        androidNotif.setChannelId(CHANNEL_IMPORTANT);
 
         // 🔔 BADGE COUNT: Set notification count for app icon badge
         androidNotif.setNotificationCount(1);
@@ -128,6 +126,7 @@ public class FcmNotificationService {
                         .setBody(body)
                         .build())
                 .setAndroidConfig(AndroidConfig.builder()
+                        .setPriority(AndroidConfig.Priority.HIGH)
                         .setNotification(androidNotif.build())
                         .build())
                 .build();
