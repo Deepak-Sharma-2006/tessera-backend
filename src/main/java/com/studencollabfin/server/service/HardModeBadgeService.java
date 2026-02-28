@@ -6,10 +6,6 @@ import com.studencollabfin.server.repository.HardModeBadgeRepository;
 import com.studencollabfin.server.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
@@ -29,7 +25,6 @@ public class HardModeBadgeService {
     private final HardModeBadgeRepository hardModeBadgeRepository;
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
-    private final MongoTemplate mongoTemplate;
 
     // ==================== BADGE DEFINITIONS ====================
 
@@ -317,9 +312,19 @@ public class HardModeBadgeService {
 
     private void persistHardModeBadgeEarned(String userId, String badgeId) {
         try {
-            Query query = new Query(Criteria.where("_id").is(userId));
-            Update update = new Update().addToSet("hardModeBadgesEarned", badgeId);
-            mongoTemplate.updateFirst(query, update, User.class);
+            User user = userRepository.findById(userId).orElse(null);
+            if (user == null) {
+                return;
+            }
+
+            if (user.getHardModeBadgesEarned() == null) {
+                user.setHardModeBadgesEarned(new ArrayList<>());
+            }
+
+            if (!user.getHardModeBadgesEarned().contains(badgeId)) {
+                user.getHardModeBadgesEarned().add(badgeId);
+                userRepository.save(user);
+            }
         } catch (Exception e) {
             System.err.println(
                     "[HardModeBadgeService] ⚠️ Failed to persist hard-mode badge in user doc: " + e.getMessage());

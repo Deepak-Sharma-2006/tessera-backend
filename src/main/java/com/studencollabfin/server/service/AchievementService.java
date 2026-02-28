@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
+import java.util.Locale;
 
 @Service
 public class AchievementService {
@@ -101,6 +102,9 @@ public class AchievementService {
             // Only add if not already present
             if (!user.getBadges().contains(title)) {
                 user.getBadges().add(title);
+
+                persistHybridBadgeId(user, title);
+
                 userRepository.save(user);
                 System.out.println("[BadgeService] ✅ Added '" + title + "' to user.badges array for " + userId);
 
@@ -160,6 +164,44 @@ public class AchievementService {
         }
     }
 
+    private void persistHybridBadgeId(User user, String badgeTitle) {
+        if (user == null || badgeTitle == null || badgeTitle.isEmpty()) {
+            return;
+        }
+
+        String badgeId = toHybridBadgeId(badgeTitle);
+        if (badgeId == null || badgeId.isEmpty()) {
+            return;
+        }
+
+        if (user.getHardModeBadgesEarned() == null) {
+            user.setHardModeBadgesEarned(new ArrayList<>());
+        }
+
+        if (!user.getHardModeBadgesEarned().contains(badgeId)) {
+            user.getHardModeBadgesEarned().add(badgeId);
+        }
+    }
+
+    private String toHybridBadgeId(String badgeTitle) {
+        switch (badgeTitle) {
+            case "Founding Dev":
+                return "founding-dev";
+            case "Campus Catalyst":
+                return "campus-catalyst";
+            case "Pod Pioneer":
+                return "pod-pioneer";
+            case "Bridge Builder":
+                return "bridge-builder";
+            default:
+                return badgeTitle
+                        .trim()
+                        .toLowerCase(Locale.ROOT)
+                        .replaceAll("[^a-z0-9]+", "-")
+                        .replaceAll("(^-|-$)", "");
+        }
+    }
+
     public List<Achievement> getUserAchievements(String userId) {
         return achievementRepository.findByUserId(userId);
     }
@@ -206,6 +248,7 @@ public class AchievementService {
         // 1. FOUNDING DEV: Auto-unlock if isDev=true
         if (user.isDev() && !currentBadges.contains("Founding Dev")) {
             currentBadges.add("Founding Dev");
+            persistHybridBadgeId(user, "Founding Dev");
             updated = true;
             changes.add("✅ AUTO-UNLOCKED 'Founding Dev' (isDev=true)");
             System.out.println("[BadgeSync] 🔓 Auto-unlocked Founding Dev for user " + user.getId());
@@ -228,6 +271,7 @@ public class AchievementService {
         // 2. CAMPUS CATALYST: Auto-unlock if role=COLLEGE_HEAD
         if ("COLLEGE_HEAD".equals(user.getRole()) && !currentBadges.contains("Campus Catalyst")) {
             currentBadges.add("Campus Catalyst");
+            persistHybridBadgeId(user, "Campus Catalyst");
             updated = true;
             changes.add("✅ AUTO-UNLOCKED 'Campus Catalyst' (role=COLLEGE_HEAD)");
             System.out.println("[BadgeSync] 🔓 Auto-unlocked Campus Catalyst for user " + user.getId());
@@ -250,6 +294,7 @@ public class AchievementService {
         // 3. SIGNAL GUARDIAN: Auto-unlock if posts >= 5
         if (user.getPostsCount() >= 5 && !currentBadges.contains("Signal Guardian")) {
             currentBadges.add("Signal Guardian");
+            persistHybridBadgeId(user, "Signal Guardian");
             updated = true;
             changes.add("✅ AUTO-UNLOCKED 'Signal Guardian' (posts >= 5)");
             System.out.println("[BadgeSync] 🔓 Auto-unlocked Signal Guardian for user " + user.getId());
@@ -281,6 +326,16 @@ public class AchievementService {
             // Re-load the latest user before saving badges to avoid overwriting XP.
             User latestUser = userRepository.findById(user.getId()).orElse(user);
             latestUser.setBadges(currentBadges);
+            if (latestUser.getHardModeBadgesEarned() == null) {
+                latestUser.setHardModeBadgesEarned(new ArrayList<>());
+            }
+            if (user.getHardModeBadgesEarned() != null) {
+                for (String badgeId : user.getHardModeBadgesEarned()) {
+                    if (!latestUser.getHardModeBadgesEarned().contains(badgeId)) {
+                        latestUser.getHardModeBadgesEarned().add(badgeId);
+                    }
+                }
+            }
             return userRepository.save(latestUser);
         } else {
             return user;

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Optional;
 import java.util.List;
+import java.util.Map;
 import java.time.LocalDateTime;
 
 @Service
@@ -31,6 +32,9 @@ public class UserService implements UserDetailsService {
 
     @Autowired(required = false)
     private FirebaseStorageService firebaseStorageService;
+
+    @Autowired(required = false)
+    private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
 
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
@@ -85,6 +89,7 @@ public class UserService implements UserDetailsService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        int oldLevel = user.getLevel();
         int newXP = user.getXp() + xpAmount;
         int currentLevel = user.getLevel();
 
@@ -98,6 +103,20 @@ public class UserService implements UserDetailsService {
         user.setLevel(currentLevel);
         user.setTotalXp(user.getTotalXp() + xpAmount);
         userRepository.save(user);
+
+        if (messagingTemplate != null && user.getLevel() > oldLevel) {
+            try {
+                Map<String, Object> levelUpPayload = Map.of(
+                        "userId", userId,
+                        "newLevel", user.getLevel(),
+                        "xp", user.getXp(),
+                        "totalXp", user.getTotalXp());
+
+                messagingTemplate.convertAndSendToUser(userId, "/queue/level-up", levelUpPayload);
+            } catch (Exception e) {
+                System.err.println("[UserService] ⚠️ Failed to send /queue/level-up: " + e.getMessage());
+            }
+        }
 
         // Check for achievements
         checkAndAwardAchievements(user);

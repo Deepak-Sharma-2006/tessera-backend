@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
+
 @Service
 @RequiredArgsConstructor
 public class GamificationService {
@@ -57,8 +59,21 @@ public class GamificationService {
                     userId, "/topic/xp-updates", user);
             System.out.println("✔️  [GamificationService] Broadcast sent!");
 
-            // Optional: Broadcast level-up to all users in a global topic
             if (user.getLevel() > oldLevel) {
+                Map<String, Object> levelUpPayload = Map.of(
+                        "userId", userId,
+                        "newLevel", user.getLevel(),
+                        "xp", user.getXp(),
+                        "totalXp", user.getTotalXp());
+
+                messagingTemplate.convertAndSendToUser(
+                        userId,
+                        "/queue/level-up",
+                        levelUpPayload);
+
+                System.out.println("🎉 [GamificationService] Sent /queue/level-up payload: " + levelUpPayload);
+
+                // Optional: Broadcast level-up to all users in a global topic
                 String levelUpMsg = user.getFullName() + " reached Level " + user.getLevel() + "!";
                 System.out.println("🎉 [GamificationService] Broadcasting level-up: " + levelUpMsg);
                 messagingTemplate.convertAndSend(
