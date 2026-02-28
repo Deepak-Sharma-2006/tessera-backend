@@ -31,6 +31,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Explicitly allow preflight OPTIONS requests for CORS
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+                        // WebSocket handshake + SockJS endpoints
+                        .requestMatchers("/ws/**", "/ws-studcollab/**", "/ws-studcollab-mobile/**").permitAll()
                         // Allow all other requests (For Dev Only)
                         .anyRequest().permitAll())
                 .httpBasic(withDefaults())
