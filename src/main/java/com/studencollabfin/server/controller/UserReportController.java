@@ -1,11 +1,13 @@
 package com.studencollabfin.server.controller;
 
+import com.studencollabfin.server.gamification.event.UserReportedEvent;
 import com.studencollabfin.server.model.Report;
 import com.studencollabfin.server.model.User;
 import com.studencollabfin.server.dto.ReportRequest;
 import com.studencollabfin.server.repository.ReportRepository;
 import com.studencollabfin.server.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,6 +27,9 @@ public class UserReportController {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     /**
      * Submit a report against a user
@@ -98,6 +103,8 @@ public class UserReportController {
 
             // Save updated user
             userRepository.save(reportedUser);
+
+            eventPublisher.publishEvent(new UserReportedEvent(reporterId, reportedUser.getId()));
 
             // Return success response
             Map<String, Object> response = new HashMap<>();

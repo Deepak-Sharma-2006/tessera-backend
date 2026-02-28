@@ -4,15 +4,18 @@ import com.studencollabfin.server.config.JwtUtil;
 import com.studencollabfin.server.dto.AuthenticationRequest;
 import com.studencollabfin.server.dto.AuthenticationResponse;
 import com.studencollabfin.server.dto.RegisterRequest;
+import com.studencollabfin.server.gamification.event.UserLoginEvent;
 import com.studencollabfin.server.model.User;
 import com.studencollabfin.server.model.SystemSettings;
 import com.studencollabfin.server.service.UserService;
 import com.studencollabfin.server.service.HardModeBadgeService;
 import com.studencollabfin.server.repository.SystemSettingsRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.ArrayList;
@@ -27,13 +30,16 @@ public class AuthenticationController {
     private final JwtUtil jwtUtil;
     private final HardModeBadgeService hardModeBadgeService;
     private final SystemSettingsRepository systemSettingsRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public AuthenticationController(UserService userService, JwtUtil jwtUtil,
-            HardModeBadgeService hardModeBadgeService, SystemSettingsRepository systemSettingsRepository) {
+            HardModeBadgeService hardModeBadgeService, SystemSettingsRepository systemSettingsRepository,
+            ApplicationEventPublisher eventPublisher) {
         this.userService = userService;
         this.jwtUtil = jwtUtil;
         this.hardModeBadgeService = hardModeBadgeService;
         this.systemSettingsRepository = systemSettingsRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @PostMapping("/login")
@@ -64,7 +70,7 @@ public class AuthenticationController {
                         "dev-admin-system",
                         "imthedev@dashboard.edu",
                         "System Dev",
-                        true,  // ✅ profileCompleted=true to bypass profile setup
+                        true, // ✅ profileCompleted=true to bypass profile setup
                         "System",
                         new ArrayList<>(),
                         "ADMIN"));
@@ -98,6 +104,8 @@ public class AuthenticationController {
             } catch (Exception e) {
                 System.err.println("[AuthenticationController] ⚠️ Error tracking login: " + e.getMessage());
             }
+
+            eventPublisher.publishEvent(new UserLoginEvent(user.getId(), LocalDateTime.now()));
 
             // ✅ CRITICAL FIX: Include collegeName and badges in auth response, with role
             return ResponseEntity.ok(new AuthenticationResponse(

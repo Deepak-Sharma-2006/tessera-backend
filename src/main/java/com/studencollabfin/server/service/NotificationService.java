@@ -1,12 +1,15 @@
 package com.studencollabfin.server.service;
 
 import com.studencollabfin.server.dto.EventNotificationDTO;
+import com.studencollabfin.server.gamification.event.NotificationReadEvent;
 import com.studencollabfin.server.model.Inbox;
 import com.studencollabfin.server.repository.InboxRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 @Service
 public class NotificationService {
@@ -16,6 +19,9 @@ public class NotificationService {
 
     @Autowired
     private InboxRepository inboxRepository;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     @SuppressWarnings("null")
     public void notifyPodMembers(String podId, String message) {
@@ -83,5 +89,40 @@ public class NotificationService {
     public void broadcastEventNotificationToDomaIn(EventNotificationDTO eventNotification,
             java.util.List<String> domainUserIds) {
         broadcastEventNotification(eventNotification, domainUserIds);
+    }
+
+    @SuppressWarnings("null")
+    public Inbox markNotificationAsRead(String notificationId) {
+        Inbox inbox = inboxRepository.findById(notificationId)
+                .orElseThrow(() -> new RuntimeException("Inbox item not found: " + notificationId));
+
+        if (inbox.isRead()) {
+            return inbox;
+        }
+
+        LocalDateTime readAt = LocalDateTime.now();
+        LocalDateTime createdAt = inbox.getCreatedAt() != null
+                ? inbox.getCreatedAt()
+                : (inbox.getTimestamp() != null ? inbox.getTimestamp() : readAt);
+        long timeToReadInMinutes = Math.max(0, ChronoUnit.MINUTES.between(createdAt, readAt));
+
+        inbox.setRead(true);
+        Inbox updated = inboxRepository.save(inbox);
+
+        String notificationType = "UNKNOWN";
+        if (updated.getType() != null) {
+            notificationType = updated.getType() == Inbox.NotificationType.POD_EVENT
+                    ? "EVENT"
+                    : updated.getType().name();
+        }
+
+        eventPublisher.publishEvent(new NotificationReadEvent(
+                updated.getUserId(),
+                updated.getId(),
+                updated.getPostId(),
+                notificationType,
+                timeToReadInMinutes));
+
+        return updated;
     }
 }

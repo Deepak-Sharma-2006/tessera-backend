@@ -2,6 +2,7 @@ package com.studencollabfin.server.controller;
 
 import com.studencollabfin.server.model.Inbox;
 import com.studencollabfin.server.repository.InboxRepository;
+import com.studencollabfin.server.service.NotificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,9 @@ public class InboxController {
 
     @Autowired
     private InboxRepository inboxRepository;
+
+    @Autowired
+    private NotificationService notificationService;
 
     /**
      * Get all inbox items for the current user, sorted by newest first
@@ -88,11 +92,7 @@ public class InboxController {
         System.out.println("📬 InboxController.markAsRead called for inbox item: " + id);
 
         try {
-            Inbox inbox = inboxRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("Inbox item not found: " + id));
-
-            inbox.setRead(true);
-            Inbox updated = inboxRepository.save(inbox);
+            Inbox updated = notificationService.markNotificationAsRead(id);
 
             System.out.println("✅ Marked inbox item " + id + " as read");
             return ResponseEntity.ok(updated);

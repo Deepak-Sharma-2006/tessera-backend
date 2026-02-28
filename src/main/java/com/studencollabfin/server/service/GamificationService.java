@@ -15,6 +15,14 @@ public class GamificationService {
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
 
+    public void addXp(String userId, int points) {
+        if (points <= 0) {
+            return;
+        }
+
+        applyXp(userId, points, "CUSTOM");
+    }
+
     /**
      * Award XP to a user for completing an action
      * Handles level progression and broadcasts updates via WebSocket
@@ -24,66 +32,78 @@ public class GamificationService {
      */
     @SuppressWarnings("null")
     public void awardXp(String userId, XPAction action) {
+        applyXp(userId, action, action.name());
+    }
+
+    private void applyXp(String userId, XPAction action, String actionLabel) {
+        int points = action.getPoints();
+
         System.out.println("🎯 [GamificationService] Attempting to award XP - userId: " + userId + ", action: "
-                + action.name() + " (" + action.getPoints() + " points)");
+                + actionLabel + " (" + points + " points)");
 
         userRepository.findById(userId).ifPresent(user -> {
-            // Calculate points with multiplier
-            int points = (int) (action.getPoints() * user.getXpMultiplier());
-            int oldLevel = user.getLevel();
-
-            System.out.println("📊 [GamificationService] User found: " + user.getFullName() + ", Old Level: " + oldLevel
-                    + ", Old XP: " + user.getXp());
-            System.out.println("💰 [GamificationService] Points to award: " + points + " (base: " + action.getPoints()
-                    + " * multiplier: " + user.getXpMultiplier() + ")");
-
-            // Award XP
-            user.setXp(user.getXp() + points);
-            user.setTotalXp(user.getTotalXp() + points);
-
-            // Level progression: 100 XP per level
-            while (user.getXp() >= 100) {
-                user.setXp(user.getXp() - 100);
-                user.setLevel(user.getLevel() + 1);
-                System.out.println("⬆️  [GamificationService] LEVEL UP! New level: " + user.getLevel());
-            }
-
-            // Save updated user
-            userRepository.save(user);
-            System.out.println("✅ [GamificationService] User saved - New Level: " + user.getLevel() + ", New XP: "
-                    + user.getXp() + ", Total XP: " + user.getTotalXp());
-
-            // Broadcast the update via WebSocket to the user's personal topic
-            System.out.println("📡 [GamificationService] Broadcasting to /user/" + userId + "/topic/xp-updates");
-            messagingTemplate.convertAndSendToUser(
-                    userId, "/topic/xp-updates", user);
-            System.out.println("✔️  [GamificationService] Broadcast sent!");
-
-            if (user.getLevel() > oldLevel) {
-                Map<String, Object> levelUpPayload = Map.of(
-                        "userId", userId,
-                        "newLevel", user.getLevel(),
-                        "xp", user.getXp(),
-                        "totalXp", user.getTotalXp());
-
-                messagingTemplate.convertAndSendToUser(
-                        userId,
-                        "/queue/level-up",
-                        levelUpPayload);
-
-                System.out.println("🎉 [GamificationService] Sent /queue/level-up payload: " + levelUpPayload);
-
-                // Optional: Broadcast level-up to all users in a global topic
-                String levelUpMsg = user.getFullName() + " reached Level " + user.getLevel() + "!";
-                System.out.println("🎉 [GamificationService] Broadcasting level-up: " + levelUpMsg);
-                messagingTemplate.convertAndSend(
-                        "/topic/level-ups",
-                        levelUpMsg);
-            }
+            int adjustedPoints = (int) (points * user.getXpMultiplier());
+            applyXpToUser(user, userId, adjustedPoints, points, actionLabel);
         });
 
         if (!userRepository.existsById(userId)) {
             System.out.println("⚠️  [GamificationService] User not found! userId: " + userId);
+        }
+    }
+
+    private void applyXp(String userId, int points, String actionLabel) {
+        System.out.println("🎯 [GamificationService] Attempting to award XP - userId: " + userId + ", action: "
+                + actionLabel + " (" + points + " points)");
+
+        userRepository.findById(userId).ifPresent(user -> {
+            int adjustedPoints = (int) (points * user.getXpMultiplier());
+            applyXpToUser(user, userId, adjustedPoints, points, actionLabel);
+        });
+
+        if (!userRepository.existsById(userId)) {
+            System.out.println("⚠️  [GamificationService] User not found! userId: " + userId);
+        }
+    }
+
+    private void applyXpToUser(User user, String userId, int adjustedPoints, int basePoints, String actionLabel) {
+        int oldLevel = user.getLevel();
+
+        System.out.println("📊 [GamificationService] User found: " + user.getFullName() + ", Old Level: " + oldLevel
+                + ", Old XP: " + user.getXp());
+        System.out.println("💰 [GamificationService] Points to award: " + adjustedPoints + " (base: " + basePoints
+                + " * multiplier: " + user.getXpMultiplier() + ")");
+
+        user.setXp(user.getXp() + adjustedPoints);
+        user.setTotalXp(user.getTotalXp() + adjustedPoints);
+
+        while (user.getXp() >= 100) {
+            user.setXp(user.getXp() - 100);
+            user.setLevel(user.getLevel() + 1);
+            System.out.println("⬆️  [GamificationService] LEVEL UP! New level: " + user.getLevel());
+        }
+
+        userRepository.save(user);
+        System.out.println("✅ [GamificationService] User saved - New Level: " + user.getLevel() + ", New XP: "
+                + user.getXp() + ", Total XP: " + user.getTotalXp());
+
+        System.out.println("📡 [GamificationService] Broadcasting to /user/" + userId + "/topic/xp-updates");
+        messagingTemplate.convertAndSendToUser(userId, "/topic/xp-updates", user);
+        System.out.println("✔️  [GamificationService] Broadcast sent! for action " + actionLabel);
+
+        if (user.getLevel() > oldLevel) {
+            Map<String, Object> levelUpPayload = Map.of(
+                    "userId", userId,
+                    "newLevel", user.getLevel(),
+                    "xp", user.getXp(),
+                    "totalXp", user.getTotalXp());
+
+            messagingTemplate.convertAndSendToUser(userId, "/queue/level-up", levelUpPayload);
+
+            System.out.println("🎉 [GamificationService] Sent /queue/level-up payload: " + levelUpPayload);
+
+            String levelUpMsg = user.getFullName() + " reached Level " + user.getLevel() + "!";
+            System.out.println("🎉 [GamificationService] Broadcasting level-up: " + levelUpMsg);
+            messagingTemplate.convertAndSend("/topic/level-ups", levelUpMsg);
         }
     }
 

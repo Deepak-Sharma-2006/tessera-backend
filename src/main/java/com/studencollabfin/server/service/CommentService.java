@@ -1,5 +1,6 @@
 package com.studencollabfin.server.service;
 
+import com.studencollabfin.server.gamification.event.ReplyCreatedEvent;
 import com.studencollabfin.server.model.Comment;
 import com.studencollabfin.server.model.Post;
 import com.studencollabfin.server.model.PostType;
@@ -7,6 +8,7 @@ import com.studencollabfin.server.model.SocialPost;
 import com.studencollabfin.server.repository.CommentRepository;
 import com.studencollabfin.server.repository.PostRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -26,6 +28,9 @@ public class CommentService {
     private AchievementService achievementService;
     @Autowired
     private PostRepository postRepository;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     /**
      * Get top-level comments for a post (no parent)
@@ -54,13 +59,47 @@ public class CommentService {
      */
     public Comment addComment(Comment comment) {
         LocalDateTime now = LocalDateTime.now();
+        Post parentPost = getParentPost(comment.getPostId());
+        boolean hadExistingReplies = comment.getPostId() != null
+                && !comment.getPostId().isBlank()
+                && !commentRepository.findByPostId(comment.getPostId()).isEmpty();
+
+        long replyLatencySeconds = 0L;
+        if (parentPost != null && parentPost.getCreatedAt() != null) {
+            Duration latency = Duration.between(parentPost.getCreatedAt(), now);
+            if (!latency.isNegative()) {
+                replyLatencySeconds = latency.getSeconds();
+            }
+        }
+
         comment.setCreatedAt(now);
         Comment savedComment = commentRepository.save(comment);
+
+        int parentPostTotalReplyCount = comment.getPostId() != null && !comment.getPostId().isBlank()
+                ? commentRepository.findByPostId(comment.getPostId()).size()
+                : 0;
+
+        String parentPostType = getParentPostType(parentPost);
+        String parentPostScope = normalizeParentPostScope(comment.getScope());
+        String parentPostAuthorId = parentPost != null ? parentPost.getAuthorId() : null;
+
+        eventPublisher.publishEvent(new ReplyCreatedEvent(
+                comment.getAuthorId(),
+                comment.getPostId(),
+                savedComment.getId(),
+                savedComment.getContent(),
+                parentPostType,
+                parentPostScope,
+                parentPostAuthorId,
+                parentPostTotalReplyCount,
+                !hadExistingReplies,
+                replyLatencySeconds,
+                parentPost != null ? parentPost.getCreatedAt() : null,
+                now));
 
         // ✅ TRACK REPLY CONTEXT: Dispatch one contextual hard-mode reply event
         if (comment.getAuthorId() != null) {
             try {
-                Post parentPost = getParentPost(comment.getPostId());
                 Map<String, Object> metadata = new HashMap<>();
                 metadata.put("postType", comment.getPostType());
                 metadata.put("scope", comment.getScope());
@@ -113,6 +152,28 @@ public class CommentService {
 
         String postType = comment.getPostType();
         return postType != null && postType.toLowerCase().contains("help");
+    }
+
+    private String getParentPostType(Post post) {
+        if (post instanceof SocialPost socialPost) {
+            if (socialPost.getType() == PostType.COLLAB) {
+                return "COLLAB_ROOM";
+            }
+            return socialPost.getType() != null ? socialPost.getType().name() : "UNKNOWN";
+        }
+        return "UNKNOWN";
+    }
+
+    private String normalizeParentPostScope(String rawScope) {
+        if (rawScope == null || rawScope.isBlank()) {
+            return "UNKNOWN";
+        }
+
+        if ("GLOBAL".equalsIgnoreCase(rawScope) || "GLOBAL_HUB".equalsIgnoreCase(rawScope)) {
+            return "GLOBAL_HUB";
+        }
+
+        return rawScope;
     }
 
     /**

@@ -27,7 +27,6 @@ public class BadgeController {
 
     /**
      * GET - Get all hard-mode badges for current user with progress.
-     * Auto-initializes badges if they don't exist yet.
      * ✅ Rate-limited to prevent rapid duplicate requests
      */
     @GetMapping("/hard-mode/{userId}")
@@ -51,12 +50,6 @@ public class BadgeController {
             long startTime = System.currentTimeMillis();
 
             List<Map<String, Object>> badges = hardModeBadgeService.getUserHardModeBadges(userId);
-
-            // ✅ Auto-initialize if no badges found
-            if (badges == null || badges.isEmpty()) {
-                hardModeBadgeService.initializeHardModeBadgesForUser(userId);
-                badges = hardModeBadgeService.getUserHardModeBadges(userId);
-            }
 
             long duration = System.currentTimeMillis() - startTime;
             if (duration > 500) {

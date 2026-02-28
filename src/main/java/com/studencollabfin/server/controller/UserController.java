@@ -1,5 +1,6 @@
 package com.studencollabfin.server.controller;
 
+import com.studencollabfin.server.gamification.event.ProfileUpdatedEvent;
 import com.studencollabfin.server.model.User;
 import com.studencollabfin.server.model.Achievement;
 import com.studencollabfin.server.model.XPAction;
@@ -8,6 +9,7 @@ import com.studencollabfin.server.service.AchievementService;
 import com.studencollabfin.server.service.GamificationService;
 import com.studencollabfin.server.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -33,6 +35,9 @@ public class UserController {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     /**
      * Updates the FCM token for the authenticated user
@@ -206,10 +211,11 @@ public class UserController {
     public ResponseEntity<?> updateUserProfile(@PathVariable String userId, @RequestBody User profileData) {
         try {
             User updatedUser = userService.updateUserProfile(userId, profileData);
+            eventPublisher.publishEvent(new ProfileUpdatedEvent(userId, isProfileComplete(updatedUser)));
 
             // 🚫 REMOVED: Automatic badge syncing on profile update
             // Badges should ONLY be unlocked through explicit triggers, not on every update
-
+            eventPublisher.publishEvent(new ProfileUpdatedEvent(userId, isProfileComplete(updatedUser)));
             return ResponseEntity.ok(updatedUser);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
@@ -360,6 +366,7 @@ public class UserController {
                 user.setRolesOpenTo(updates.getRolesOpenTo());
 
             User updatedUser = userRepository.save(user);
+            eventPublisher.publishEvent(new ProfileUpdatedEvent(userId, isProfileComplete(updatedUser)));
 
             // Check if profile is now complete for Profile Pioneer achievement
             if (isProfileComplete(user)) {

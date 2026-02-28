@@ -28,9 +28,6 @@ public class UserService implements UserDetailsService {
     private PasswordEncoder passwordEncoder;
 
     @Autowired(required = false)
-    private HardModeBadgeService hardModeBadgeService;
-
-    @Autowired(required = false)
     private FirebaseStorageService firebaseStorageService;
 
     @Autowired(required = false)
@@ -310,11 +307,6 @@ public class UserService implements UserDetailsService {
 
                         User savedUser = userRepository.save(newUser);
 
-                        // ✅ Initialize hard-mode badges for new user
-                        if (hardModeBadgeService != null) {
-                            hardModeBadgeService.initializeHardModeBadgesForUser(savedUser.getId());
-                        }
-
                         return savedUser;
                     }
                 });
@@ -352,11 +344,6 @@ public class UserService implements UserDetailsService {
         newUser.setJoinedDate(now);
 
         User savedUser = userRepository.save(newUser);
-
-        // ✅ Initialize hard-mode badges for new user
-        if (hardModeBadgeService != null) {
-            hardModeBadgeService.initializeHardModeBadgesForUser(savedUser.getId());
-        }
 
         return savedUser;
     }

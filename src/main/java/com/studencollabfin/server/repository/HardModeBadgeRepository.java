@@ -12,6 +12,8 @@ public interface HardModeBadgeRepository extends MongoRepository<HardModeBadge, 
 
     Optional<HardModeBadge> findByUserIdAndBadgeId(String userId, String badgeId);
 
+    boolean existsByUserIdAndBadgeId(String userId, String badgeId);
+
     List<HardModeBadge> findByUserIdAndIsUnlockedTrue(String userId);
 
     List<HardModeBadge> findByUserIdAndIsEquippedTrue(String userId);

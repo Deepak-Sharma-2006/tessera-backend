@@ -32,6 +32,7 @@ public class Achievement {
         LEADERSHIP,
         MENTORSHIP, // Now recognized by compiler
         SPECIAL, // Now recognized by compiler
+        HARD_MODE,
         FOUNDING_DEV, // New MVP Type
         CAMPUS_CATALYST, // New MVP Type
         POD_PIONEER, // New MVP Type

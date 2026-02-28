@@ -1,5 +1,8 @@
 package com.studencollabfin.server.service;
 
+import com.studencollabfin.server.gamification.event.CollabRoomCreatedEvent;
+import com.studencollabfin.server.gamification.event.CollabRoomParticipatedEvent;
+import com.studencollabfin.server.gamification.event.PodJoinedEvent;
 import com.studencollabfin.server.model.CollabPod;
 import com.studencollabfin.server.model.Message;
 import com.studencollabfin.server.model.PodCooldown;
@@ -15,15 +18,18 @@ import com.studencollabfin.server.exception.PermissionDeniedException;
 import com.studencollabfin.server.exception.CooldownException;
 import com.studencollabfin.server.exception.BannedFromPodException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class CollabPodService {
@@ -54,6 +60,9 @@ public class CollabPodService {
 
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     @SuppressWarnings("null")
     public CollabPod createPod(String creatorId, CollabPod pod) {
@@ -108,6 +117,11 @@ public class CollabPodService {
                 + pod.getType());
         CollabPod savedPod = collabPodRepository.save(pod);
         System.out.println("Pod saved successfully with ID: " + savedPod.getId());
+
+        boolean isMultiCollege = savedPod.getScope() == com.studencollabfin.server.model.PodScope.GLOBAL;
+        int distinctCollegeCountAtFill = calculateDistinctCollegeCountAtFill(savedPod);
+        eventPublisher.publishEvent(
+                new CollabRoomCreatedEvent(creatorId, savedPod.getId(), isMultiCollege, distinctCollegeCountAtFill));
 
         // Award XP for creating a collab pod
         userService.awardCollabPodCreationXP(creatorId);
@@ -887,14 +901,16 @@ public class CollabPodService {
         pod.getMemberNames().add(userName);
         pod.setLastActive(LocalDateTime.now());
 
+        boolean isFirstPod = collabPodRepository.findByMemberIdsContaining(userId).isEmpty() &&
+                collabPodRepository.findByCreatorId(userId).isEmpty();
+
         CollabPod updatedPod = collabPodRepository.save(pod);
         System.out.println(
                 "  ✓ User " + userId + " (" + userName + ") added to memberIds (total members: "
                         + pod.getMemberIds().size() + ")");
 
-        // ✅ TRIGGER Pod Pioneer Badge on first pod join
-        achievementService.unlockAchievement(userId, "Pod Pioneer");
-        System.out.println("  ✓ Pod Pioneer badge triggered for user: " + userId);
+        eventPublisher.publishEvent(new PodJoinedEvent(userId, podId, isFirstPod));
+        eventPublisher.publishEvent(new CollabRoomParticipatedEvent(userId, podId, deriveAcademicBranch(pod)));
 
         // ✅ SYNC USER BADGES: Ensure all badges are up-to-date after pod join
         try {
@@ -1165,5 +1181,70 @@ public class CollabPodService {
             System.err.println("⚠️ Failed to fetch user name: " + e.getMessage());
             return "User";
         }
+    }
+
+    private int calculateDistinctCollegeCountAtFill(CollabPod pod) {
+        Set<String> distinctCollegeKeys = new HashSet<>();
+
+        addUserCollegeKey(distinctCollegeKeys, pod.getOwnerId());
+        addUserCollegeKeys(distinctCollegeKeys, pod.getAdminIds());
+        addUserCollegeKeys(distinctCollegeKeys, pod.getMemberIds());
+
+        return distinctCollegeKeys.size();
+    }
+
+    private void addUserCollegeKeys(Set<String> distinctCollegeKeys, List<String> userIds) {
+        if (userIds == null) {
+            return;
+        }
+
+        for (String userId : userIds) {
+            addUserCollegeKey(distinctCollegeKeys, userId);
+        }
+    }
+
+    private void addUserCollegeKey(Set<String> distinctCollegeKeys, String userId) {
+        if (userId == null || userId.isBlank()) {
+            return;
+        }
+
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            return;
+        }
+
+        String key = null;
+        if (user.getEmail() != null && user.getEmail().contains("@")) {
+            key = user.getEmail().substring(user.getEmail().indexOf('@') + 1).trim().toLowerCase();
+        }
+
+        if (key == null || key.isBlank()) {
+            if (user.getCollegeName() != null && !user.getCollegeName().isBlank()) {
+                key = "college:" + user.getCollegeName().trim().toLowerCase();
+            } else {
+                key = "user:" + userId;
+            }
+        }
+
+        distinctCollegeKeys.add(key);
+    }
+
+    private String deriveAcademicBranch(CollabPod pod) {
+        if (pod == null) {
+            return "general";
+        }
+
+        if (pod.getTopics() != null && !pod.getTopics().isEmpty()) {
+            String firstTopic = pod.getTopics().get(0);
+            if (firstTopic != null && !firstTopic.isBlank()) {
+                return firstTopic.trim().toLowerCase();
+            }
+        }
+
+        if (pod.getType() != null) {
+            return pod.getType().name().toLowerCase();
+        }
+
+        return "general";
     }
 }

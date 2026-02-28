@@ -1,10 +1,13 @@
 package com.studencollabfin.server.service;
 
+import com.studencollabfin.server.gamification.event.DirectMessageSentEvent;
+import com.studencollabfin.server.gamification.tracker.ModerationTracker;
 import com.studencollabfin.server.model.Conversation;
 import com.studencollabfin.server.model.Message;
 import com.studencollabfin.server.repository.ConversationRepository;
 import com.studencollabfin.server.repository.MessageRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import com.studencollabfin.server.repository.UserRepository;
@@ -28,10 +31,13 @@ public class MessagingService {
     @Autowired
     private UserRepository userRepository;
     @Autowired
-    private AchievementService achievementService;
+    private FcmNotificationService fcmNotificationService;
 
     @Autowired
-    private FcmNotificationService fcmNotificationService;
+    private ApplicationEventPublisher eventPublisher;
+
+    @Autowired
+    private ModerationTracker moderationTracker;
 
     public List<Conversation> getUserConversations(String userId) {
         List<Conversation> conversations = conversationRepository.findByParticipantIdsContaining(userId);
@@ -157,6 +163,11 @@ public class MessagingService {
         msg.setMessageType(Message.MessageType.CHAT);
         msg.setScope("GLOBAL");
 
+        String receiverIdForEvent = null;
+        String senderDomainForEvent = "";
+        String receiverDomainForEvent = "";
+        String receiverCollegeIdForEvent = "";
+
         if (conversationId != null) {
             Conversation conv = conversationRepository.findById(conversationId).orElseThrow();
 
@@ -169,11 +180,53 @@ public class MessagingService {
             conv.setUpdatedAt(new Date());
             conversationRepository.save(conv);
 
-            // ✅ Check for Bridge Builder badge unlock (inter-college message)
-            checkAndUnlockBridgeBuilder(senderId, conv);
+            if (conv.getParticipantIds() != null) {
+                receiverIdForEvent = conv.getParticipantIds().stream()
+                        .filter(participantId -> participantId != null && !participantId.equals(senderId))
+                        .findFirst()
+                        .orElse(null);
+            }
+
+            enforceDirectMessageBan(senderId, receiverIdForEvent);
+
+            User senderUser = userRepository.findById(senderId).orElse(null);
+            if (senderUser != null && senderUser.getEmail() != null) {
+                senderDomainForEvent = extractDomain(senderUser.getEmail());
+            }
+            if (receiverIdForEvent != null) {
+                User receiverUser = userRepository.findById(receiverIdForEvent).orElse(null);
+                if (receiverUser != null) {
+                    if (receiverUser.getEmail() != null && !receiverUser.getEmail().isBlank()) {
+                        receiverDomainForEvent = extractDomain(receiverUser.getEmail());
+                    }
+                    if (receiverUser.getCollegeName() != null && !receiverUser.getCollegeName().isBlank()) {
+                        receiverCollegeIdForEvent = receiverUser.getCollegeName().trim().toLowerCase();
+                    }
+                }
+            }
+
+            if (receiverDomainForEvent == null || receiverDomainForEvent.isBlank()) {
+                receiverDomainForEvent = (receiverCollegeIdForEvent != null && !receiverCollegeIdForEvent.isBlank())
+                        ? "college:" + receiverCollegeIdForEvent
+                        : "unknown";
+            }
+
+            if (senderDomainForEvent == null || senderDomainForEvent.isBlank()) {
+                senderDomainForEvent = "unknown";
+            }
+
         }
 
         Message saved = messageRepository.save(msg);
+
+        if (receiverIdForEvent != null) {
+            eventPublisher.publishEvent(new DirectMessageSentEvent(
+                    senderId,
+                    receiverIdForEvent,
+                    senderDomainForEvent,
+                    receiverDomainForEvent,
+                    receiverCollegeIdForEvent));
+        }
 
         // ✅ FCM: DM notifications (token-based) with Android tag stacking per sender
         try {
@@ -229,6 +282,19 @@ public class MessagingService {
         return saved;
     }
 
+    private void enforceDirectMessageBan(String senderId, String receiverId) {
+        if (senderId == null || senderId.isBlank() || receiverId == null || receiverId.isBlank()) {
+            return;
+        }
+
+        if (moderationTracker.isDmBanActiveBetween(senderId, receiverId)) {
+            long remainingMinutes = moderationTracker.getRemainingDmBanMinutes(senderId, receiverId);
+            throw new RuntimeException(
+                    "You are temporarily blocked from messaging this user for another " + remainingMinutes
+                            + " minute(s).");
+        }
+    }
+
     // ✅ NEW: Overload for backward compatibility (7 parameters)
     public Message sendMessage(String conversationId, String senderId, String text, List<String> attachmentUrls,
             String replyToId, String replyToContent, String replyToSenderName) {
@@ -239,70 +305,6 @@ public class MessagingService {
     // ✅ NEW: Overload for backward compatibility (4 parameters)
     public Message sendMessage(String conversationId, String senderId, String text, List<String> attachmentUrls) {
         return sendMessage(conversationId, senderId, text, attachmentUrls, null, null, null, null);
-    }
-
-    private void checkAndUnlockBridgeBuilder(String senderId, Conversation conv) {
-        try {
-            // Get sender's user details
-            User sender = userRepository.findById(senderId).orElse(null);
-            if (sender == null || sender.getEmail() == null) {
-                System.out.println("[BadgeService] ⚠️ Bridge Builder check: Sender not found or email missing");
-                return;
-            }
-
-            String senderDomain = extractDomain(sender.getEmail());
-            List<String> participantIds = conv.getParticipantIds();
-
-            if (participantIds == null || participantIds.size() < 2) {
-                System.out.println("[BadgeService] ℹ️ Bridge Builder check: Conversation has less than 2 participants");
-                return;
-            }
-
-            System.out.println("[BadgeService] 🔍 Checking Bridge Builder eligibility...");
-            System.out.println("   Sender: " + senderId);
-            System.out.println("   Sender domain: " + senderDomain);
-
-            // Check if any other participant has different institution domain
-            boolean isInterCollege = false;
-            String recipientDomain = "";
-            String recipientId = "";
-
-            for (String participantId : participantIds) {
-                if (!participantId.equals(senderId)) {
-                    User participant = userRepository.findById(participantId).orElse(null);
-                    if (participant != null && participant.getEmail() != null) {
-                        String participantDomain = extractDomain(participant.getEmail());
-                        System.out.println("   Checking participant: " + participantId);
-                        System.out.println("   Participant domain: " + participantDomain);
-
-                        if (!senderDomain.equals(participantDomain)) {
-                            isInterCollege = true;
-                            recipientDomain = participantDomain;
-                            recipientId = participantId;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            System.out.println("   Is inter-college: " + isInterCollege);
-            System.out.println("   Already has badge: " + sender.getBadges().contains("Bridge Builder"));
-
-            // If inter-college and sender doesn't have badge yet, unlock it
-            if (isInterCollege && !sender.getBadges().contains("Bridge Builder")) {
-                System.out.println("[BadgeService] ✅ UNLOCKING Bridge Builder!");
-                System.out.println("   Sender domain: " + senderDomain + " → Recipient domain: " + recipientDomain);
-                achievementService.onInterCollegeMessage(senderId);
-                System.out.println("[BadgeService] 🌉 Bridge Builder badge UNLOCKED for " + senderId);
-            } else if (!isInterCollege) {
-                System.out.println("[BadgeService] ℹ️ Not inter-college message - same domain conversation");
-            } else {
-                System.out.println("[BadgeService] ℹ️ Badge already owned by " + senderId);
-            }
-        } catch (Exception e) {
-            System.err.println("❌ Error checking Bridge Builder badge: " + e.getMessage());
-            e.printStackTrace();
-        }
     }
 
     private String extractDomain(String email) {

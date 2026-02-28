@@ -1,7 +1,9 @@
 package com.studencollabfin.server.service;
 
 import com.studencollabfin.server.model.HardModeBadge;
+import com.studencollabfin.server.model.Achievement;
 import com.studencollabfin.server.model.User;
+import com.studencollabfin.server.repository.AchievementRepository;
 import com.studencollabfin.server.repository.HardModeBadgeRepository;
 import com.studencollabfin.server.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +26,8 @@ public class HardModeBadgeService {
 
     private final HardModeBadgeRepository hardModeBadgeRepository;
     private final UserRepository userRepository;
+    private final AchievementRepository achievementRepository;
+    private final GamificationService gamificationService;
     private final SimpMessagingTemplate messagingTemplate;
 
     // ==================== BADGE DEFINITIONS ====================
@@ -54,8 +58,9 @@ public class HardModeBadgeService {
                 "doubt-destroyer", "Doubt Destroyer", "Provide the first reply to 25 questions tagged as #HelpNeeded.",
                 "EPIC", "ruby-red", 25, "helpNeededReplies"));
         BADGE_DEFINITIONS.put("resource-titan", new BadgeDefinition(
-                "resource-titan", "Resource Titan", "Have 25 of your shared files/links \"pinned\" by other users.",
-                "LEGENDARY", "emerald-shine", 25, "pinnedResources"));
+                "resource-titan", "Resource Titan",
+                "Earn 50 points by sharing resources in posts or links in others' threads.",
+                "LEGENDARY", "emerald-shine", 50, "resourceThreads"));
         BADGE_DEFINITIONS.put("lead-architect", new BadgeDefinition(
                 "lead-architect", "Lead Architect",
                 "Fill 10 Collab Rooms with members from 4+ different colleges each.",
@@ -83,19 +88,20 @@ public class HardModeBadgeService {
                 "Fill all fields and update \"Project Links\" every 30 days to keep the badge.",
                 "COMMON", "polished-chrome", 1, "profileMaintenance"));
         BADGE_DEFINITIONS.put("the-oracle-gm", new BadgeDefinition(
-                "the-oracle-gm", "The Oracle (GM)", "Correctly predict the winning outcome of 50 community Polls.",
-                "EPIC", "amethyst-eye", 50, "correctPolls"));
+                "the-oracle-gm", "The Oracle (GM)",
+                "Choose the majority-leading option at vote time in 100 community polls.",
+                "EPIC", "amethyst-eye", 100, "majorityChoicePolls"));
         BADGE_DEFINITIONS.put("silent-sentinel", new BadgeDefinition(
                 "silent-sentinel", "Silent Sentinel", "Reach 500 replies with a 100% report-free record.",
                 "RARE", "white-marble", 500, "reportFreeTotalReplies"));
         BADGE_DEFINITIONS.put("campus-helper", new BadgeDefinition(
                 "campus-helper", "Campus Helper",
-                "Provide 10 replies that are marked as \"Helpful\" by institutional peers.",
-                "COMMON", "bronze-oak", 10, "helpfulReplies"));
+                "Reply to 50 distinct ASK_HELP posts where you are not the author.",
+                "COMMON", "bronze-oak", 50, "distinctHelpThreads"));
         BADGE_DEFINITIONS.put("event-vanguard", new BadgeDefinition(
-                "event-vanguard", "Event Vanguard", "Reply to an Event announcement within 5 minutes of its creation.",
-                "RARE", "orange-neon", 1, "eventRepliesCount" // Progressive badge
-        ));
+                "event-vanguard", "Event Vanguard",
+                "Open and mark an EVENT notification as read within 1 hour of creation for 30 distinct events.",
+                "RARE", "orange-neon", 30, "eventNotificationReads"));
         BADGE_DEFINITIONS.put("cross-domain-pro", new BadgeDefinition(
                 "cross-domain-pro", "Cross-Domain Pro",
                 "Join Collab Rooms in 5 different academic branches (IT, Mech, Civil, etc).",
@@ -126,29 +132,53 @@ public class HardModeBadgeService {
 
     // ==================== CORE METHODS ====================
 
-    /**
-     * Initialize hard-mode badges for a new user.
-     */
-    public void initializeHardModeBadgesForUser(String userId) {
-        System.out.println("[HardModeBadgeService] Initializing hard-mode badges for user: " + userId);
+    public record BadgeMetadata(String badgeId, String badgeName, String tier, String visualStyle, int threshold) {
+    }
 
-        BADGE_DEFINITIONS.forEach((badgeId, definition) -> {
-            HardModeBadge badge = new HardModeBadge();
-            badge.setUserId(userId);
-            badge.setBadgeId(badgeId);
-            badge.setBadgeName(definition.name);
-            badge.setTier(definition.tier);
-            badge.setVisualStyle(definition.visualStyle);
-            badge.setProgressTotal(definition.threshold);
-            badge.setProgressCurrent(0);
-            badge.setUnlocked(false);
-            badge.setEquipped(false);
-            badge.setProgressData(new HashMap<>());
+    public BadgeMetadata getBadgeMetadata(String badgeId) {
+        BadgeDefinition definition = BADGE_DEFINITIONS.get(badgeId);
+        if (definition == null) {
+            throw new IllegalArgumentException("Unknown badgeId: " + badgeId);
+        }
 
-            hardModeBadgeRepository.save(badge);
-        });
+        return new BadgeMetadata(
+                definition.id,
+                definition.name,
+                definition.tier,
+                definition.visualStyle,
+                definition.threshold);
+    }
 
-        System.out.println("[HardModeBadgeService] ✅ Hard-mode badges initialized for user: " + userId);
+    public void awardBadge(String userId, String badgeId) {
+        HardModeBadge badge = hardModeBadgeRepository.findByUserIdAndBadgeId(userId, badgeId).orElse(null);
+        if (badge == null || badge.isUnlocked()) {
+            return;
+        }
+
+        if (badge.getProgressCurrent() < badge.getProgressTotal()) {
+            return;
+        }
+
+        if (isInvalidated(badge)) {
+            return;
+        }
+
+        badge.setUnlocked(true);
+        badge.setUnlockedAt(LocalDateTime.now());
+        hardModeBadgeRepository.save(badge);
+
+        persistHardModeBadgeEarned(userId, badgeId);
+        awardHardModeUnlockRewards(userId, badge);
+
+        messagingTemplate.convertAndSendToUser(
+                userId, "/queue/badge-criterion-met",
+                Map.of(
+                        "badgeName", badge.getBadgeName(),
+                        "message",
+                        "🎯 " + badge.getBadgeName() + " criteria unlocked! Use /api/badges/hard-mode/unlock to equip.",
+                        "timestamp", System.currentTimeMillis()));
+
+        broadcastBadgeAddedEvent(userId, badge, "🎯 " + badge.getBadgeName() + " criteria met!");
     }
 
     /**
@@ -281,32 +311,60 @@ public class HardModeBadgeService {
         boolean criteriaMetNow = evaluateBadgeCriteria(badge, user);
 
         if (criteriaMetNow && !badge.isUnlocked()) {
-            badge.setUnlocked(true);
-            badge.setUnlockedAt(LocalDateTime.now());
-            hardModeBadgeRepository.save(badge);
-
-            // Persist earned badge in user document BEFORE broadcasting events.
-            // Atomic addToSet prevents duplicates under concurrent triggers.
-            persistHardModeBadgeEarned(userId, badgeId);
+            awardBadge(userId, badgeId);
 
             System.out.println(
                     "[HardModeBadgeService] ✅ Badge criteria met: " + badge.getBadgeName() + " for user " + userId);
+        }
+    }
 
-            // Notify user via WebSocket
-            messagingTemplate.convertAndSendToUser(
-                    userId, "/queue/badge-criterion-met",
-                    Map.of(
-                            "badgeName", badge.getBadgeName(),
-                            "message",
-                            "🎯 " + badge.getBadgeName()
-                                    + " criteria unlocked! Use /api/badges/hard-mode/unlock to equip.",
-                            "timestamp", System.currentTimeMillis()));
+    @SuppressWarnings("unchecked")
+    private boolean isInvalidated(HardModeBadge badge) {
+        if (badge == null || badge.getProgressData() == null) {
+            return false;
+        }
 
-            // Keep hard-mode unlocks on the same stream as core badges.
-            broadcastBadgeAddedEvent(
-                    userId,
-                    badge,
-                    "🎯 " + badge.getBadgeName() + " criteria met!");
+        Object invalidated = badge.getProgressData().get("silentSentinelInvalidated");
+        if (invalidated instanceof Boolean) {
+            return (Boolean) invalidated;
+        }
+        return false;
+    }
+
+    private void awardHardModeUnlockRewards(String userId, HardModeBadge badge) {
+        if (userId == null || userId.isEmpty() || badge == null) {
+            return;
+        }
+
+        try {
+            Achievement achievement = achievementRepository
+                    .findByUserIdAndTitle(userId, badge.getBadgeName())
+                    .orElse(null);
+
+            if (achievement == null) {
+                achievement = new Achievement();
+                achievement.setUserId(userId);
+                achievement.setTitle(badge.getBadgeName());
+                achievement.setDescription("Hard-mode achievement: " + badge.getBadgeName());
+                achievement.setType(Achievement.AchievementType.HARD_MODE);
+                achievement.setXpValue(25);
+                achievement.setUnlocked(true);
+                achievement.setUnlockedAt(LocalDateTime.now());
+                achievementRepository.save(achievement);
+            } else {
+                if (!achievement.isUnlocked()) {
+                    achievement.setUnlocked(true);
+                    achievement.setUnlockedAt(LocalDateTime.now());
+                }
+                achievement.setType(Achievement.AchievementType.HARD_MODE);
+                achievement.setXpValue(25);
+                achievementRepository.save(achievement);
+            }
+
+            gamificationService.addXp(userId, 25);
+            System.out.println("[HardModeBadgeService] 💰 Awarded 25 XP for hard-mode unlock: " + badge.getBadgeId());
+        } catch (Exception e) {
+            System.err.println("[HardModeBadgeService] ⚠️ Failed to persist hard-mode reward: " + e.getMessage());
         }
     }
 
@@ -404,8 +462,8 @@ public class HardModeBadgeService {
                 return badge.getProgressCurrent() >= 50;
 
             case "active-talker-elite":
-                // Requires 150 replies in 7 days
-                return user.getWeeklyReplies() >= 150;
+                // Requires 150 replies tracked via badge progress
+                return badge.getProgressCurrent() >= badge.getProgressTotal();
 
             case "ultra-responder":
                 // Requires 20 fast replies (<30 seconds)
@@ -460,16 +518,15 @@ public class HardModeBadgeService {
                 return user.getStatsMap().getOrDefault("correctPolls", 0) >= 50;
 
             case "silent-sentinel":
-                // 500 replies with 0 reports
-                return user.getTotalReplies() >= 500 && user.getReportCount() == 0;
+                // 500 replies and not invalidated by report event
+                return badge.getProgressCurrent() >= badge.getProgressTotal() && !isInvalidated(badge);
 
             case "campus-helper":
                 // 10 replies marked as helpful
                 return user.getStatsMap().getOrDefault("helpfulReplies", 0) >= 10;
 
             case "event-vanguard":
-                // Progressive badge
-                return badge.getProgressCurrent() >= 1;
+                return badge.getProgressCurrent() >= badge.getProgressTotal();
 
             case "cross-domain-pro":
                 // 5 different academic branches
@@ -707,8 +764,9 @@ public class HardModeBadgeService {
     }
 
     /**
-     * Get all hard-mode badges for user with current progress.
-     * ✅ INCLUDES POWER-FIVE BADGES from user.badges array
+     * Get all hard-mode badges for user with hydration merge.
+     * Returns exactly 24 badges by overlaying DB trackers on top of static
+     * registry.
      */
     public List<Map<String, Object>> getUserHardModeBadges(String userId) {
         System.out.println("[HardModeBadgeService] 🔍 Fetching badges for user: " + userId);
@@ -723,77 +781,41 @@ public class HardModeBadgeService {
             hardModeBadges = new ArrayList<>();
         }
 
+        Map<String, HardModeBadge> trackerByBadgeId = hardModeBadges.stream()
+                .collect(Collectors.toMap(HardModeBadge::getBadgeId, badge -> badge, (left, right) -> right));
+
         List<Map<String, Object>> result = new ArrayList<>();
+        for (BadgeDefinition definition : BADGE_DEFINITIONS.values()) {
+            HardModeBadge tracker = trackerByBadgeId.get(definition.id);
 
-        // ✅ STEP 1: Add all hard-mode badges from database
-        result.addAll(hardModeBadges.stream().map(badge -> {
+            int progressCurrent = tracker != null ? tracker.getProgressCurrent() : 0;
+            int progressTotal = tracker != null && tracker.getProgressTotal() > 0 ? tracker.getProgressTotal()
+                    : definition.threshold;
+            boolean isUnlocked = tracker != null && tracker.isUnlocked();
+            boolean isEquipped = tracker != null && tracker.isEquipped();
+            LocalDateTime unlockedAt = tracker != null ? tracker.getUnlockedAt() : null;
+
             Map<String, Object> badgeInfo = new HashMap<>();
-            badgeInfo.put("badgeId", badge.getBadgeId());
-            badgeInfo.put("badgeName", badge.getBadgeName());
-            badgeInfo.put("tier", badge.getTier());
-            badgeInfo.put("visualStyle", badge.getVisualStyle());
-            badgeInfo.put("progress", Map.of("current", badge.getProgressCurrent(), "total", badge.getProgressTotal()));
-            badgeInfo.put("isUnlocked", badge.isUnlocked());
-            badgeInfo.put("isEquipped", badge.isEquipped());
-            badgeInfo.put("unlockedAt", badge.getUnlockedAt());
+            badgeInfo.put("badgeId", definition.id);
+            badgeInfo.put("badgeName", definition.name);
+            badgeInfo.put("tier", definition.tier);
+            badgeInfo.put("visualStyle", definition.visualStyle);
+            badgeInfo.put("progress", Map.of("current", progressCurrent, "total", progressTotal));
+            badgeInfo.put("isUnlocked", isUnlocked);
+            badgeInfo.put("isEquipped", isEquipped);
+            badgeInfo.put("unlockedAt", unlockedAt);
 
-            // Check if locked by daily limit
-            if (badge.isUnlocked() && !badge.isEquipped() && user != null &&
-                    user.getHardModeBadgesLocked().contains(badge.getBadgeId())) {
+            if (isUnlocked && !isEquipped && user != null && user.getHardModeBadgesLocked() != null
+                    && user.getHardModeBadgesLocked().contains(definition.id)) {
                 badgeInfo.put("status", "pending-unlock");
                 badgeInfo.put("remainingTime", getTimeUntilMidnight());
-            } else if (!badge.isUnlocked()) {
+            } else if (!isUnlocked) {
                 badgeInfo.put("status", "locked");
-            } else if (badge.isEquipped()) {
+            } else if (isEquipped) {
                 badgeInfo.put("status", "equipped");
             }
 
-            return badgeInfo;
-        }).collect(Collectors.toList()));
-
-        // ✅ STEP 2: Add power-five badges from user.badges array
-        if (user != null && user.getBadges() != null) {
-            List<String> powerFiveBadges = Arrays.asList("Founding Dev", "Campus Catalyst", "Pod Pioneer",
-                    "Bridge Builder");
-
-            for (String badgeName : powerFiveBadges) {
-                // Convert title case to kebab-case for ID matching
-                String badgeId = badgeName.toLowerCase().replace(" ", "-");
-
-                // Skip if already included from hard-mode collection
-                boolean alreadyAdded = result.stream()
-                        .anyMatch(b -> badgeId.equals(b.get("badgeId")));
-
-                if (!alreadyAdded) {
-                    boolean isUnlocked = user.getBadges().contains(badgeName);
-
-                    Map<String, Object> powerFiveBadge = new HashMap<>();
-                    powerFiveBadge.put("badgeId", badgeId);
-                    powerFiveBadge.put("badgeName", badgeName);
-
-                    // Get tier and visualStyle from definitions
-                    BadgeDefinition def = BADGE_DEFINITIONS.get(badgeId);
-                    if (def != null) {
-                        powerFiveBadge.put("tier", def.tier);
-                        powerFiveBadge.put("visualStyle", def.visualStyle);
-                    } else {
-                        powerFiveBadge.put("tier", "EPIC");
-                        powerFiveBadge.put("visualStyle", "gold-glow");
-                    }
-
-                    powerFiveBadge.put("progress", Map.of("current", isUnlocked ? 1 : 0, "total", 1));
-                    powerFiveBadge.put("isUnlocked", isUnlocked);
-                    powerFiveBadge.put("isEquipped", isUnlocked); // Power-five badges auto-equipped when unlocked
-                    powerFiveBadge.put("status", isUnlocked ? "equipped" : "locked");
-                    powerFiveBadge.put("unlockedAt", null);
-
-                    result.add(powerFiveBadge);
-
-                    if (isUnlocked) {
-                        System.out.println("[HardModeBadgeService] ✅ Added power-five badge: " + badgeName);
-                    }
-                }
-            }
+            result.add(badgeInfo);
         }
 
         System.out.println("[HardModeBadgeService] 🎯 Total badges returned: " + result.size());

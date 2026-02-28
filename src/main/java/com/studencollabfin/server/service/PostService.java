@@ -1,6 +1,8 @@
 package com.studencollabfin.server.service;
 
 import com.studencollabfin.server.dto.CommentRequest;
+import com.studencollabfin.server.gamification.event.PollResolvedEvent;
+import com.studencollabfin.server.gamification.event.PostCreatedEvent;
 import com.studencollabfin.server.model.Comment;
 import com.studencollabfin.server.model.Post;
 import com.studencollabfin.server.model.SocialPost;
@@ -10,6 +12,7 @@ import com.studencollabfin.server.repository.PostRepository;
 import com.studencollabfin.server.repository.CommentRepository;
 import com.studencollabfin.server.service.FcmNotificationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -24,6 +27,7 @@ public class PostService {
     private final UserService userService;
     private final CommentService commentService;
     private final FcmNotificationService fcmNotificationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public SocialPost toggleLike(String postId, String userId) {
         Post post = getPostById(postId);
@@ -44,12 +48,14 @@ public class PostService {
     // Poll voting logic
     public Post voteOnPollOption(String postId, String optionId, String userId) {
         Post post = getPostById(postId);
+        boolean voteRecorded = false;
+        com.studencollabfin.server.model.PollOption selectedOption = null;
         if (post instanceof com.studencollabfin.server.model.SocialPost) {
             com.studencollabfin.server.model.SocialPost social = (com.studencollabfin.server.model.SocialPost) post;
             java.util.List<com.studencollabfin.server.model.PollOption> options = social.getPollOptions();
             if (options != null && options.size() > 0) {
                 // Find option by UUID
-                com.studencollabfin.server.model.PollOption selectedOption = options.stream()
+                selectedOption = options.stream()
                         .filter(opt -> optionId.equals(opt.getId()))
                         .findFirst()
                         .orElse(null);
@@ -64,8 +70,27 @@ public class PostService {
                     if (!alreadyVoted) {
                         selectedOption.getVotes().add(userId);
                         postRepository.save(social);
+                        voteRecorded = true;
                     }
                 }
+            }
+
+            if (voteRecorded) {
+                boolean isMajorityChoice = false;
+                if (social.getPollOptions() != null && !social.getPollOptions().isEmpty()) {
+                    int selectedVotesCount = selectedOption != null && selectedOption.getVotes() != null
+                            ? selectedOption.getVotes().size()
+                            : 0;
+
+                    int maxVotesAcrossOptions = social.getPollOptions().stream()
+                            .mapToInt(option -> option.getVotes() != null ? option.getVotes().size() : 0)
+                            .max()
+                            .orElse(0);
+
+                    isMajorityChoice = selectedVotesCount > 0 && selectedVotesCount == maxVotesAcrossOptions;
+                }
+
+                eventPublisher.publishEvent(new PollResolvedEvent(userId, social.getId(), isMajorityChoice));
             }
         }
         return post;
@@ -170,6 +195,18 @@ public class PostService {
 
         // Save the post first to get its ID
         Post savedPost = postRepository.save(post);
+
+        String postCategory = "GENERAL";
+        boolean hasResources = false;
+        if (savedPost instanceof SocialPost socialPost) {
+            postCategory = socialPost.getCategory() != null ? socialPost.getCategory() : "GENERAL";
+            hasResources = socialPost.getRequiredSkills() != null && !socialPost.getRequiredSkills().isEmpty();
+        } else if (savedPost instanceof TeamFindingPost teamFindingPost) {
+            postCategory = "TEAM_FINDING";
+            hasResources = teamFindingPost.getRequiredSkills() != null
+                    && !teamFindingPost.getRequiredSkills().isEmpty();
+        }
+        eventPublisher.publishEvent(new PostCreatedEvent(authorId, savedPost.getId(), postCategory, hasResources));
 
         // Hard-mode trigger: discussion authoring activity
         try {
