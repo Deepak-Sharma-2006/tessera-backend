@@ -795,6 +795,20 @@ public class HardModeBadgeService {
             boolean isEquipped = tracker != null && tracker.isEquipped();
             LocalDateTime unlockedAt = tracker != null ? tracker.getUnlockedAt() : null;
 
+            if (user != null) {
+                if ("founding-dev".equals(definition.id) && user.isDev()) {
+                    progressCurrent = progressTotal;
+                    isUnlocked = true;
+                }
+
+                if ("campus-catalyst".equals(definition.id)
+                        && user.getRole() != null
+                        && "COLLEGE_HEAD".equalsIgnoreCase(user.getRole())) {
+                    progressCurrent = progressTotal;
+                    isUnlocked = true;
+                }
+            }
+
             Map<String, Object> badgeInfo = new HashMap<>();
             badgeInfo.put("badgeId", definition.id);
             badgeInfo.put("badgeName", definition.name);
