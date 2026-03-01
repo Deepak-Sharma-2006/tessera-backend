@@ -7,6 +7,7 @@ import com.studencollabfin.server.gamification.event.PodJoinedEvent;
 import com.studencollabfin.server.gamification.event.ReplyCreatedEvent;
 import com.studencollabfin.server.model.Comment;
 import com.studencollabfin.server.model.HardModeBadge;
+import com.studencollabfin.server.repository.CollabPodRepository;
 import com.studencollabfin.server.repository.CommentRepository;
 import com.studencollabfin.server.service.HardModeBadgeService;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +50,7 @@ public class CollabTracker {
     private final MongoTemplate mongoTemplate;
     private final HardModeBadgeService hardModeBadgeService;
     private final CommentRepository commentRepository;
+    private final CollabPodRepository collabPodRepository;
 
     @Async
     @EventListener
@@ -75,11 +77,7 @@ public class CollabTracker {
             return;
         }
 
-        if (!event.isFirstPod()) {
-            return;
-        }
-
-        upsertProgressAndMaybeAward(event.userId(), BADGE_POD_PIONEER, 1);
+        syncPodPioneerProgressFromSourceOfTruth(event.userId());
     }
 
     @Async
@@ -105,7 +103,40 @@ public class CollabTracker {
             return;
         }
 
+        syncPodPioneerProgressFromSourceOfTruth(event.userId());
+
         upsertDistinctBranchProgressAndAward(event.userId(), event.academicBranch());
+    }
+
+    private void syncPodPioneerProgressFromSourceOfTruth(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return;
+        }
+
+        long joinedRoomsCount = collabPodRepository.countJoinedRoomsByUserId(userId);
+        HardModeBadge tracker = ensureTrackerExists(userId, BADGE_POD_PIONEER);
+        if (tracker == null) {
+            return;
+        }
+
+        Map<String, Object> progressData = tracker.getProgressData();
+        if (progressData == null) {
+            progressData = new HashMap<>();
+        }
+
+        progressData.put("joinedRoomsCount", joinedRoomsCount);
+        tracker.setProgressData(progressData);
+        tracker.setProgressCurrent(joinedRoomsCount > 0 ? 1 : 0);
+        tracker.setLastCheckedAt(LocalDateTime.now());
+        mongoTemplate.save(tracker);
+
+        if (!tracker.isUnlocked() && tracker.getProgressCurrent() >= tracker.getProgressTotal()) {
+            hardModeBadgeService.awardBadge(userId, BADGE_POD_PIONEER);
+            log.info("[CollabTracker] Badge threshold met for user={}, badge={}, joinedRooms={}",
+                    userId,
+                    BADGE_POD_PIONEER,
+                    joinedRoomsCount);
+        }
     }
 
     @Async

@@ -3,6 +3,7 @@ package com.studencollabfin.server.controller;
 import com.studencollabfin.server.model.CollabPod;
 import com.studencollabfin.server.model.Message;
 import com.studencollabfin.server.model.PodScope;
+import com.studencollabfin.server.model.User;
 import com.studencollabfin.server.repository.CollabPodRepository;
 import com.studencollabfin.server.service.CollabPodService;
 import com.studencollabfin.server.service.UserService;
@@ -307,9 +308,11 @@ public class CollabPodController {
      */
     @PostMapping("/{id}/join")
     public ResponseEntity<?> joinPod(@PathVariable String id,
-            @RequestBody(required = false) java.util.Map<String, String> payload) {
+            @RequestBody(required = false) java.util.Map<String, String> payload,
+            Authentication authentication,
+            HttpServletRequest request) {
         try {
-            String userId = payload != null ? payload.get("userId") : null;
+            String userId = resolveJoinUserId(payload, authentication, request);
             if (userId == null || userId.isEmpty()) {
                 return ResponseEntity.badRequest().body(java.util.Map.of("error", "userId is required"));
             }
@@ -542,9 +545,11 @@ public class CollabPodController {
      */
     @PostMapping("/{id}/join-enhanced")
     public ResponseEntity<?> joinPodEnhanced(@PathVariable String id,
-            @RequestBody java.util.Map<String, String> payload) {
+            @RequestBody(required = false) java.util.Map<String, String> payload,
+            Authentication authentication,
+            HttpServletRequest request) {
         try {
-            String userId = payload.get("userId");
+            String userId = resolveJoinUserId(payload, authentication, request);
 
             if (userId == null || userId.isEmpty()) {
                 return ResponseEntity.badRequest()
@@ -568,6 +573,37 @@ public class CollabPodController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", e.getMessage()));
         }
+    }
+
+    private String resolveJoinUserId(java.util.Map<String, String> payload,
+            Authentication authentication,
+            HttpServletRequest request) {
+        String payloadUserId = payload != null ? payload.get("userId") : null;
+
+        String sessionUserId = null;
+        if (request != null && request.getSession(false) != null) {
+            Object raw = request.getSession(false).getAttribute("userId");
+            if (raw != null) {
+                sessionUserId = String.valueOf(raw);
+            }
+        }
+
+        String principalUserId = getCurrentUserId(authentication, request);
+        String nativeUserId = request != null ? request.getHeader("userId") : null;
+
+        if (payloadUserId != null && !payloadUserId.isBlank()) {
+            return payloadUserId;
+        }
+        if (sessionUserId != null && !sessionUserId.isBlank()) {
+            return sessionUserId;
+        }
+        if (principalUserId != null && !principalUserId.isBlank()) {
+            return principalUserId;
+        }
+        if (nativeUserId != null && !nativeUserId.isBlank()) {
+            return nativeUserId;
+        }
+        return null;
     }
 
     /**
@@ -702,10 +738,24 @@ public class CollabPodController {
     private String getCurrentUserId(Authentication authentication, HttpServletRequest request) {
         if (authentication != null && authentication.getPrincipal() != null) {
             Object principal = authentication.getPrincipal();
+            String principalValue;
             if (principal instanceof org.springframework.security.core.userdetails.UserDetails) {
-                return ((org.springframework.security.core.userdetails.UserDetails) principal).getUsername();
+                principalValue = ((org.springframework.security.core.userdetails.UserDetails) principal).getUsername();
+            } else {
+                principalValue = principal.toString();
             }
-            return principal.toString();
+
+            if (principalValue != null && principalValue.contains("@")) {
+                try {
+                    User user = userService.findByEmail(principalValue);
+                    if (user != null && user.getId() != null && !user.getId().isBlank()) {
+                        return user.getId();
+                    }
+                } catch (RuntimeException ignored) {
+                }
+            }
+
+            return principalValue;
         }
 
         // Fall back to X-User-Id header

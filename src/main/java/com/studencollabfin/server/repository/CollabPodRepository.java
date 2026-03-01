@@ -3,6 +3,7 @@ package com.studencollabfin.server.repository;
 import com.studencollabfin.server.model.CollabPod;
 import com.studencollabfin.server.model.PodScope;
 import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.mongodb.repository.Query;
 import org.springframework.stereotype.Repository;
 import java.util.List;
 
@@ -52,4 +53,7 @@ public interface CollabPodRepository extends MongoRepository<CollabPod, String> 
 
     // ✅ NEW: Find pods owned by a specific user (for "My Pods" filtering)
     List<CollabPod> findByOwnerId(String ownerId);
+
+    @Query(value = "{ '$or': [ { 'memberIds': ?0 }, { 'adminIds': ?0 } ] }", count = true)
+    long countJoinedRoomsByUserId(String userId);
 }
