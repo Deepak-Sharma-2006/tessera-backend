@@ -7,6 +7,7 @@ import com.studencollabfin.server.model.HardModeBadge;
 import com.studencollabfin.server.model.Post;
 import com.studencollabfin.server.model.PostType;
 import com.studencollabfin.server.model.SocialPost;
+import com.studencollabfin.server.repository.CommentRepository;
 import com.studencollabfin.server.repository.PostRepository;
 import com.studencollabfin.server.service.HardModeBadgeService;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +60,7 @@ public class EngagementTracker {
     private final MongoTemplate mongoTemplate;
     private final HardModeBadgeService hardModeBadgeService;
     private final PostRepository postRepository;
+    private final CommentRepository commentRepository;
 
     @Async
     @EventListener
@@ -133,7 +136,7 @@ public class EngagementTracker {
 
         boolean isGlobalHubReply = isGlobalHubScope(event.parentPostScope());
         if (isGlobalHubReply) {
-            upsertProgressAndMaybeAward(event.userId(), BADGE_VOICE_OF_HUB, 1);
+            syncVoiceOfHubProgressFromSourceOfTruth(event.userId());
         }
 
         if (isGlobalHubReply) {
@@ -157,12 +160,14 @@ public class EngagementTracker {
         log.info("Evaluating Reply for First-Responder. PostID: {}, isFirst: {}, Latency: {}",
                 event.postId(), event.isFirstReplyToPost(), event.replyLatencySeconds());
 
-        if (event.isFirstReplyToPost() && event.replyLatencySeconds() <= 1800) {
+        Post parentPost = getPost(event.postId());
+        boolean isSelfReplyToOwnPost = isReplyingToOwnPost(parentPost, event.userId());
+
+        if (event.isFirstReplyToPost() && event.replyLatencySeconds() <= 1800 && !isSelfReplyToOwnPost) {
             upsertProgressAndMaybeAward(event.userId(), BADGE_FIRST_RESPONDER, 1);
         }
 
-        Post parentPost = getPost(event.postId());
-        if (event.isFirstReplyToPost() && isAskHelpCategoryPost(parentPost)) {
+        if (event.isFirstReplyToPost() && isAskHelpCategoryPost(parentPost) && !isSelfReplyToOwnPost) {
             upsertProgressAndMaybeAward(event.userId(), BADGE_DOUBT_DESTROYER, 1);
         }
 
@@ -457,6 +462,27 @@ public class EngagementTracker {
         }
     }
 
+    private void syncVoiceOfHubProgressFromSourceOfTruth(String userId) {
+        HardModeBadge tracker = ensureTrackerExists(userId, BADGE_VOICE_OF_HUB);
+        if (tracker == null) {
+            return;
+        }
+
+        long totalGlobalHubReplies = commentRepository.countByAuthorIdAndScopeIn(
+                userId,
+                Arrays.asList("GLOBAL_HUB", "GLOBAL"));
+
+        int normalizedCount = (int) Math.max(0L, totalGlobalHubReplies);
+        tracker.setProgressCurrent(normalizedCount);
+        tracker.setLastCheckedAt(LocalDateTime.now());
+        mongoTemplate.save(tracker);
+
+        if (!tracker.isUnlocked() && tracker.getProgressCurrent() >= tracker.getProgressTotal()) {
+            hardModeBadgeService.awardBadge(userId, BADGE_VOICE_OF_HUB);
+            log.info("[EngagementTracker] Badge threshold met for user={}, badge={}", userId, BADGE_VOICE_OF_HUB);
+        }
+    }
+
     private HardModeBadge ensureTrackerExists(String userId, String badgeId) {
         HardModeBadgeService.BadgeMetadata metadata = hardModeBadgeService.getBadgeMetadata(badgeId);
         Query query = Query.query(Criteria.where("userId").is(userId).and("badgeId").is(badgeId));
@@ -551,6 +577,13 @@ public class EngagementTracker {
         }
 
         return URL_PATTERN.matcher(replyContent).find();
+    }
+
+    private boolean isReplyingToOwnPost(Post post, String replyAuthorId) {
+        if (post == null || replyAuthorId == null || replyAuthorId.isBlank()) {
+            return false;
+        }
+        return post.getAuthorId() != null && post.getAuthorId().equals(replyAuthorId);
     }
 
     private LocalDateTime toIst(LocalDateTime serverTimestamp) {

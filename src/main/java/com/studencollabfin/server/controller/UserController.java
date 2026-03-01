@@ -215,7 +215,6 @@ public class UserController {
 
             // 🚫 REMOVED: Automatic badge syncing on profile update
             // Badges should ONLY be unlocked through explicit triggers, not on every update
-            eventPublisher.publishEvent(new ProfileUpdatedEvent(userId, isProfileComplete(updatedUser)));
             return ResponseEntity.ok(updatedUser);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();

@@ -30,4 +30,6 @@ public interface CommentRepository extends MongoRepository<Comment, String> {
 
     // ✅ ADMIN: Find all comments by author for cascade deletion
     List<Comment> findByAuthorId(String authorId);
+
+    long countByAuthorIdAndScopeIn(String authorId, List<String> scopes);
 }

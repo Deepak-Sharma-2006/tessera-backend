@@ -7,9 +7,13 @@ import com.studencollabfin.server.model.PostType;
 import com.studencollabfin.server.model.SocialPost;
 import com.studencollabfin.server.repository.CommentRepository;
 import com.studencollabfin.server.repository.PostRepository;
+import com.studencollabfin.server.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -32,6 +36,9 @@ public class CommentService {
     private AchievementService achievementService;
     @Autowired
     private PostRepository postRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @Autowired
     private ApplicationEventPublisher eventPublisher;
@@ -62,6 +69,15 @@ public class CommentService {
      * Add a comment - with proper categorization
      */
     public Comment addComment(Comment comment) {
+        String actorUserId = resolveCommentAuthorId(comment);
+        if (actorUserId == null || actorUserId.isBlank()) {
+            log.error("[CommentService] Aborting comment add: unable to resolve non-null authorId for postId={}",
+                    comment != null ? comment.getPostId() : null);
+            throw new IllegalStateException("Unable to resolve authenticated user for comment");
+        }
+
+        comment.setAuthorId(actorUserId);
+
         LocalDateTime now = LocalDateTime.now();
         Post parentPost = getParentPost(comment.getPostId());
         long existingReplyCount = comment.getPostId() != null && !comment.getPostId().isBlank()
@@ -70,14 +86,13 @@ public class CommentService {
 
         String parentPostAuthorId = parentPost != null ? parentPost.getAuthorId() : null;
         boolean isSelfReplyToOwnPost = parentPostAuthorId != null
-                && comment.getAuthorId() != null
-                && parentPostAuthorId.equals(comment.getAuthorId());
+                && parentPostAuthorId.equals(actorUserId);
 
         boolean isFirstReplyToPost = existingReplyCount == 0;
         if (isSelfReplyToOwnPost && isFirstReplyToPost) {
             isFirstReplyToPost = false;
             log.info("[CommentService] First-reply badge check blocked for self-reply. postId={}, authorId={}",
-                    comment.getPostId(), comment.getAuthorId());
+                    comment.getPostId(), actorUserId);
         } else {
             log.info("[CommentService] First-reply badge check evaluated. postId={}, existingReplies={}, isFirst={}",
                     comment.getPostId(), existingReplyCount, isFirstReplyToPost);
@@ -96,7 +111,7 @@ public class CommentService {
         try {
             log.info("BREADCRUMB 1: Comment saved. Preparing to publish ReplyCreatedEvent.");
             eventPublisher.publishEvent(new ReplyCreatedEvent(
-                    comment.getAuthorId(),
+                    actorUserId,
                     postId,
                     savedComment.getId(),
                     savedComment.getContent(),
@@ -115,7 +130,7 @@ public class CommentService {
         }
 
         // ✅ TRACK REPLY CONTEXT: Dispatch one contextual hard-mode reply event
-        if (comment.getAuthorId() != null) {
+        if (actorUserId != null) {
             try {
                 Map<String, Object> metadata = new HashMap<>();
                 metadata.put("postType", comment.getPostType());
@@ -129,10 +144,10 @@ public class CommentService {
                 metadata.put("fast", isFast);
                 metadata.put("help", isHelp);
 
-                achievementService.checkHardMode(comment.getAuthorId(), "reply", metadata);
+                achievementService.checkHardMode(actorUserId, "reply", metadata);
 
                 System.out.println(
-                        "[CommentService] ✅ Reply tracked for badge progress - user: " + comment.getAuthorId());
+                        "[CommentService] ✅ Reply tracked for badge progress - user: " + actorUserId);
             } catch (Exception e) {
                 System.err.println("[CommentService] ⚠️ Error tracking reply: " + e.getMessage());
             }
@@ -206,6 +221,40 @@ public class CommentService {
         }
 
         return rawScope;
+    }
+
+    private String resolveCommentAuthorId(Comment comment) {
+        if (comment != null && comment.getAuthorId() != null && !comment.getAuthorId().isBlank()) {
+            return comment.getAuthorId().trim();
+        }
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return null;
+        }
+
+        String principalName = null;
+        Object principal = auth.getPrincipal();
+        if (principal instanceof UserDetails userDetails) {
+            principalName = userDetails.getUsername();
+        } else if (principal instanceof String principalString && !"anonymousUser".equalsIgnoreCase(principalString)) {
+            principalName = principalString;
+        }
+
+        if ((principalName == null || principalName.isBlank()) && auth.getName() != null
+                && !auth.getName().isBlank()) {
+            principalName = auth.getName();
+        }
+
+        if (principalName == null || principalName.isBlank()) {
+            return null;
+        }
+
+        String normalized = principalName.trim();
+        return userRepository.findByEmail(normalized)
+                .map(com.studencollabfin.server.model.User::getId)
+                .or(() -> userRepository.findById(normalized).map(com.studencollabfin.server.model.User::getId))
+                .orElse(null);
     }
 
     /**

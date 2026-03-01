@@ -206,7 +206,8 @@ public class PostService {
             hasResources = teamFindingPost.getRequiredSkills() != null
                     && !teamFindingPost.getRequiredSkills().isEmpty();
         }
-        eventPublisher.publishEvent(new PostCreatedEvent(authorId, savedPost.getId(), postCategory, hasResources));
+        eventPublisher.publishEvent(
+                new PostCreatedEvent(savedPost.getAuthorId(), savedPost.getId(), postCategory, hasResources));
 
         // Hard-mode trigger: discussion authoring activity
         try {

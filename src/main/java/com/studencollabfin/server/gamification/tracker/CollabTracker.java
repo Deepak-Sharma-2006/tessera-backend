@@ -5,7 +5,9 @@ import com.studencollabfin.server.gamification.event.CollabRoomParticipatedEvent
 import com.studencollabfin.server.gamification.event.DirectMessageSentEvent;
 import com.studencollabfin.server.gamification.event.PodJoinedEvent;
 import com.studencollabfin.server.gamification.event.ReplyCreatedEvent;
+import com.studencollabfin.server.model.Comment;
 import com.studencollabfin.server.model.HardModeBadge;
+import com.studencollabfin.server.repository.CommentRepository;
 import com.studencollabfin.server.service.HardModeBadgeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,8 +23,10 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -44,6 +48,7 @@ public class CollabTracker {
 
     private final MongoTemplate mongoTemplate;
     private final HardModeBadgeService hardModeBadgeService;
+    private final CommentRepository commentRepository;
 
     @Async
     @EventListener
@@ -114,9 +119,80 @@ public class CollabTracker {
             return;
         }
 
-        upsertTeamEngineProgressAndAward(event.userId(), event.postId());
-        upsertDistinctRoomProgressAndAward(event.userId(), BADGE_COLLAB_MASTER, COLLAB_MASTER_DISTINCT_ROOMS_KEY,
-                event.postId());
+        syncCollabReplyDrivenProgressFromSourceOfTruth(event.userId());
+    }
+
+    private void syncCollabReplyDrivenProgressFromSourceOfTruth(String userId) {
+        List<Comment> authoredComments = commentRepository.findByAuthorId(userId);
+
+        Map<String, Long> repliesPerRoom = authoredComments.stream()
+                .filter(comment -> comment != null
+                        && comment.getPostId() != null
+                        && !comment.getPostId().isBlank()
+                        && "COLLAB_ROOM".equalsIgnoreCase(comment.getPostType()))
+                .collect(Collectors.groupingBy(Comment::getPostId, LinkedHashMap::new, Collectors.counting()));
+
+        List<String> distinctRooms = new ArrayList<>(repliesPerRoom.keySet());
+        List<String> qualifiedRooms = repliesPerRoom.entrySet().stream()
+                .filter(entry -> entry.getValue() != null && entry.getValue() >= 20)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+
+        syncTeamEngineTracker(userId, repliesPerRoom, qualifiedRooms);
+        syncCollabMasterTracker(userId, distinctRooms);
+    }
+
+    private void syncTeamEngineTracker(String userId, Map<String, Long> repliesPerRoom, List<String> qualifiedRooms) {
+        HardModeBadge tracker = ensureTrackerExists(userId, BADGE_TEAM_ENGINE);
+        if (tracker == null) {
+            return;
+        }
+
+        Map<String, Object> progressData = tracker.getProgressData();
+        if (progressData == null) {
+            progressData = new HashMap<>();
+        }
+
+        Map<String, Integer> normalizedRepliesPerRoom = new LinkedHashMap<>();
+        for (Map.Entry<String, Long> entry : repliesPerRoom.entrySet()) {
+            normalizedRepliesPerRoom.put(entry.getKey(), entry.getValue().intValue());
+        }
+
+        progressData.put(TEAM_ENGINE_REPLIES_PER_ROOM_KEY, normalizedRepliesPerRoom);
+        progressData.put(TEAM_ENGINE_QUALIFIED_ROOMS_KEY, qualifiedRooms);
+
+        tracker.setProgressData(progressData);
+        tracker.setProgressCurrent(qualifiedRooms.size());
+        tracker.setLastCheckedAt(LocalDateTime.now());
+        mongoTemplate.save(tracker);
+
+        if (!tracker.isUnlocked() && tracker.getProgressCurrent() >= tracker.getProgressTotal()) {
+            hardModeBadgeService.awardBadge(userId, BADGE_TEAM_ENGINE);
+            log.info("[CollabTracker] Badge threshold met for user={}, badge={}", userId, BADGE_TEAM_ENGINE);
+        }
+    }
+
+    private void syncCollabMasterTracker(String userId, List<String> distinctRooms) {
+        HardModeBadge tracker = ensureTrackerExists(userId, BADGE_COLLAB_MASTER);
+        if (tracker == null) {
+            return;
+        }
+
+        Map<String, Object> progressData = tracker.getProgressData();
+        if (progressData == null) {
+            progressData = new HashMap<>();
+        }
+
+        progressData.put(COLLAB_MASTER_DISTINCT_ROOMS_KEY, distinctRooms);
+        tracker.setProgressData(progressData);
+        tracker.setProgressCurrent(distinctRooms.size());
+        tracker.setLastCheckedAt(LocalDateTime.now());
+        mongoTemplate.save(tracker);
+
+        if (!tracker.isUnlocked() && tracker.getProgressCurrent() >= tracker.getProgressTotal()) {
+            hardModeBadgeService.awardBadge(userId, BADGE_COLLAB_MASTER);
+            log.info("[CollabTracker] Badge threshold met for user={}, badge={}", userId, BADGE_COLLAB_MASTER);
+        }
     }
 
     private void upsertTeamEngineProgressAndAward(String userId, String roomId) {

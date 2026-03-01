@@ -54,6 +54,11 @@ public class ModerationTracker {
             return;
         }
 
+        if (event.reporterId().equals(event.targetUserId())) {
+            log.warn("Ignoring self-report for moderation tracker consistency. userId={}", event.reporterId());
+            return;
+        }
+
         applySpamAlertDmBan(event.targetUserId(), event.reporterId());
         blacklistSilentSentinelReceiver(event.targetUserId(), event.reporterId());
     }
