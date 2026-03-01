@@ -23,26 +23,27 @@ public class CommentWSController {
     @MessageMapping("/post.{postId}.comment")
     public void handleComment(@DestinationVariable String postId, @Payload CommentRequest payload,
             SimpMessageHeaderAccessor headerAccessor) {
-        String userId = null;
-        String source = "SESSION";
-
-        if (headerAccessor != null && headerAccessor.getSessionAttributes() != null) {
-            Object sessionUserId = headerAccessor.getSessionAttributes().get("userId");
-            if (sessionUserId instanceof String) {
-                userId = (String) sessionUserId;
-            }
-        }
+        Object sessionUserIdObj = headerAccessor != null && headerAccessor.getSessionAttributes() != null
+                ? headerAccessor.getSessionAttributes().get("userId")
+                : null;
+        String userId = sessionUserIdObj instanceof String ? (String) sessionUserIdObj : null;
 
         if ((userId == null || userId.isBlank()) && headerAccessor != null && headerAccessor.getUser() != null) {
             userId = headerAccessor.getUser().getName();
-            source = "FALLBACK";
         }
+
+        if ((userId == null || userId.isBlank()) && headerAccessor != null) {
+            userId = headerAccessor.getFirstNativeHeader("userId");
+        }
+
+        log.info("[Comment-WS] Resolution: UserID={}, SessionFound={}, PrincipalFound={}",
+                userId,
+                sessionUserIdObj != null,
+                headerAccessor != null && headerAccessor.getUser() != null);
 
         if (userId == null || userId.isBlank()) {
-            throw new IllegalStateException("Unable to resolve authenticated user for WebSocket comment");
+            throw new IllegalStateException("CRITICAL: WebSocket Auth Context Missing.");
         }
-
-        log.info("[CommentWSController] userId {} resolved via {}", userId, source);
 
         // Save comment to comments collection
         Comment saved = postService.addCommentToPost(postId, payload, userId);

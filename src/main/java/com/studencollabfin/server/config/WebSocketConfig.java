@@ -19,6 +19,7 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
+import java.util.HashMap;
 import java.util.List;
 
 @Configuration
@@ -85,9 +86,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                                                         List.of(new SimpleGrantedAuthority("ROLE_USER")));
                                         accessor.setUser(authentication);
                                         String userId = user.getId();
-                                        if (accessor.getSessionAttributes() != null) {
-                                                accessor.getSessionAttributes().put("userId", userId);
+                                        if (accessor.getSessionAttributes() == null) {
+                                                accessor.setSessionAttributes(new HashMap<>());
                                         }
+                                        accessor.getSessionAttributes().put("userId", userId);
+                                        log.info("[WS-AUTH] Stored userId {} in STOMP session attributes.", userId);
                                         log.info("BREADCRUMB WS: WebSocket Connected & Authenticated for UserID: {}",
                                                         userId);
                                 } catch (Exception e) {
