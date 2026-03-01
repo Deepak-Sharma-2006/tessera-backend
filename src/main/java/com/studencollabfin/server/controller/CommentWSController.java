@@ -4,16 +4,17 @@ import com.studencollabfin.server.dto.CommentRequest;
 import com.studencollabfin.server.model.Comment;
 import com.studencollabfin.server.service.PostService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
-import java.security.Principal;
-
 @Controller
 @RequiredArgsConstructor
+@Slf4j
 public class CommentWSController {
     private final PostService postService;
     private final SimpMessagingTemplate messagingTemplate;
@@ -21,11 +22,27 @@ public class CommentWSController {
     @SuppressWarnings("null")
     @MessageMapping("/post.{postId}.comment")
     public void handleComment(@DestinationVariable String postId, @Payload CommentRequest payload,
-            Principal principal) {
-        String userId = principal != null ? principal.getName() : null;
+            SimpMessageHeaderAccessor headerAccessor) {
+        String userId = null;
+        String source = "SESSION";
+
+        if (headerAccessor != null && headerAccessor.getSessionAttributes() != null) {
+            Object sessionUserId = headerAccessor.getSessionAttributes().get("userId");
+            if (sessionUserId instanceof String) {
+                userId = (String) sessionUserId;
+            }
+        }
+
+        if ((userId == null || userId.isBlank()) && headerAccessor != null && headerAccessor.getUser() != null) {
+            userId = headerAccessor.getUser().getName();
+            source = "FALLBACK";
+        }
+
         if (userId == null || userId.isBlank()) {
             throw new IllegalStateException("Unable to resolve authenticated user for WebSocket comment");
         }
+
+        log.info("[CommentWSController] userId {} resolved via {}", userId, source);
 
         // Save comment to comments collection
         Comment saved = postService.addCommentToPost(postId, payload, userId);

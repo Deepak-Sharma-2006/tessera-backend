@@ -85,6 +85,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                                                         List.of(new SimpleGrantedAuthority("ROLE_USER")));
                                         accessor.setUser(authentication);
                                         String userId = user.getId();
+                                        if (accessor.getSessionAttributes() != null) {
+                                                accessor.getSessionAttributes().put("userId", userId);
+                                        }
                                         log.info("BREADCRUMB WS: WebSocket Connected & Authenticated for UserID: {}",
                                                         userId);
                                 } catch (Exception e) {
