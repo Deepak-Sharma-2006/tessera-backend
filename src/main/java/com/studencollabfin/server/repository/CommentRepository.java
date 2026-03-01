@@ -14,6 +14,8 @@ public interface CommentRepository extends MongoRepository<Comment, String> {
     // Get all comments for a post
     List<Comment> findByPostId(String postId);
 
+    long countByPostId(String postId);
+
     // Get comments by scope (CAMPUS or GLOBAL)
     List<Comment> findByScopeOrderByCreatedAtDesc(String scope);
 

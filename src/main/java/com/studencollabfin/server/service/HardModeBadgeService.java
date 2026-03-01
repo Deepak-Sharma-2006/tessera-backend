@@ -33,6 +33,70 @@ public class HardModeBadgeService {
     // ==================== BADGE DEFINITIONS ====================
 
     private static final Map<String, BadgeDefinition> BADGE_DEFINITIONS = new LinkedHashMap<>();
+    private static final Map<String, String> BADGE_REQUIREMENTS = Map.ofEntries(
+            Map.entry("discussion-architect", "Create a Global Hub thread and grow that same thread to 50 replies."),
+            Map.entry("active-talker-elite", "Accumulate 150 replies inside any rolling 7-day window."),
+            Map.entry("ultra-responder", "Record 20 consecutive inbox replies with latency at or below 30 seconds."),
+            Map.entry("midnight-legend",
+                    "Post one qualifying Global Hub reply in the 2:00–3:59 AM IST window for 3 nights in a row."),
+            Map.entry("bridge-master", "Start DMs with 5 distinct domains in a rolling 24-hour window."),
+            Map.entry("doubt-destroyer", "Be the first reply on 25 ASK_HELP posts."),
+            Map.entry("resource-titan", "Earn 50 resource thread points; each thread contributes at most once."),
+            Map.entry("lead-architect", "Create or fill 10 collab rooms where each includes 4+ distinct colleges."),
+            Map.entry("team-engine", "Reach 20 replies in each of 15 different COLLAB_ROOM threads."),
+            Map.entry("first-responder", "Be the first reply and post it within 30 minutes."),
+            Map.entry("streak-seeker-lvl3",
+                    "Complete 100 consecutive IST-day logins; missing a day resets progress."),
+            Map.entry("collab-master-lvl3", "Reply in 50 unique COLLAB_ROOM threads."),
+            Map.entry("voice-of-hub-lvl3", "Post 1,500 replies counted only from Global Hub scope."),
+            Map.entry("profile-perfectionist", "Fill all required profile fields and save your profile updates."),
+            Map.entry("the-oracle-gm", "In 100 polls, vote for the option leading at the moment you vote."),
+            Map.entry("silent-sentinel",
+                    "Maintain a 500-message DM streak with one partner who keeps your report status clean."),
+            Map.entry("campus-helper", "Reply to 50 different ASK_HELP posts where you are not the author."),
+            Map.entry("event-vanguard", "Read 30 distinct EVENT notifications within 60 minutes of creation."),
+            Map.entry("cross-domain-pro", "Participate in collab activity spanning 5 distinct academic branches."),
+            Map.entry("spam-alert-sanction",
+                    "Three valid reports from the same user trigger a 24-hour DM ban for that user pair."),
+            Map.entry("founding-dev", "Assigned the admin/developer role by an authorized admin."),
+            Map.entry("campus-catalyst", "Assigned a verified campus leader role by authorized admins."),
+            Map.entry("pod-pioneer", "Join one collaboration pod for the first time."),
+            Map.entry("bridge-builder", "Send one inter-college or inter-domain direct message."));
+
+    private static final Map<String, String> BADGE_UNLOCK_TIPS = Map.ofEntries(
+            Map.entry("discussion-architect",
+                    "Start a Global Hub thread and push it to 50 total replies. One breakout thread is enough."),
+            Map.entry("active-talker-elite",
+                    "Post 150 replies in a rolling 7-day window. Keep your reply pace consistent all week."),
+            Map.entry("ultra-responder",
+                    "Land 20 fast replies in a row with latency at 30 seconds or less. A slow reply resets the streak."),
+            Map.entry("midnight-legend", "Reply in Global Hub between 2:00 and 3:59 AM IST for 3 consecutive nights."),
+            Map.entry("bridge-master", "Send DMs to 5 distinct domains within a rolling 24-hour window."),
+            Map.entry("doubt-destroyer",
+                    "Be the first reply on 25 ASK_HELP posts. Speed and first-response consistency matter."),
+            Map.entry("resource-titan",
+                    "Earn 50 thread points by posting resources or sharing links in other users' threads. Each thread counts once."),
+            Map.entry("lead-architect",
+                    "Create or fill 10 collab rooms with at least 4 distinct colleges in each room."),
+            Map.entry("team-engine", "In 15 different COLLAB_ROOM threads, reach 20 replies per room."),
+            Map.entry("first-responder", "Be the first reply and do it within 30 minutes."),
+            Map.entry("streak-seeker-lvl3",
+                    "Log in for 100 consecutive IST days. Break the chain and the streak restarts from 1."),
+            Map.entry("collab-master-lvl3", "Reply in 50 distinct COLLAB_ROOM threads."),
+            Map.entry("voice-of-hub-lvl3", "Post 1,500 replies in Global Hub scope. Only Global Hub replies count."),
+            Map.entry("profile-perfectionist", "Complete your profile fully and save it."),
+            Map.entry("the-oracle-gm", "Vote for the option currently leading at vote time in 100 polls."),
+            Map.entry("silent-sentinel", "Build a 500-message streak with one DM partner who has not reported you."),
+            Map.entry("campus-helper", "Reply to 50 distinct ASK_HELP posts where you are not the author."),
+            Map.entry("event-vanguard",
+                    "Read 30 distinct EVENT notifications within 60 minutes. Re-reading the same event won't count."),
+            Map.entry("cross-domain-pro", "Participate across 5 distinct academic branches in collab activity."),
+            Map.entry("spam-alert-sanction",
+                    "If the same user reports you 3 times, a 24-hour DM ban applies for that user."),
+            Map.entry("founding-dev", "Granted by admin/developer role assignment."),
+            Map.entry("campus-catalyst", "Granted by authorized campus leader role assignment."),
+            Map.entry("pod-pioneer", "Join your first collaboration pod."),
+            Map.entry("bridge-builder", "Send an inter-college/inter-domain DM."));
 
     static {
         // Initialize all 20 hard-mode badges
@@ -814,6 +878,9 @@ public class HardModeBadgeService {
             badgeInfo.put("badgeName", definition.name);
             badgeInfo.put("tier", definition.tier);
             badgeInfo.put("visualStyle", definition.visualStyle);
+            badgeInfo.put("description", definition.description);
+            badgeInfo.put("requirement", getRequirement(definition));
+            badgeInfo.put("unlockedBy", getUnlockTip(definition));
             badgeInfo.put("progress", Map.of("current", progressCurrent, "total", progressTotal));
             badgeInfo.put("isUnlocked", isUnlocked);
             badgeInfo.put("isEquipped", isEquipped);
@@ -869,6 +936,20 @@ public class HardModeBadgeService {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime midnight = now.plusDays(1).toLocalDate().atStartOfDay();
         return java.time.Duration.between(now, midnight).toMillis();
+    }
+
+    private String getRequirement(BadgeDefinition definition) {
+        if (definition == null) {
+            return "Meet criteria";
+        }
+        return BADGE_REQUIREMENTS.getOrDefault(definition.id, definition.description);
+    }
+
+    private String getUnlockTip(BadgeDefinition definition) {
+        if (definition == null) {
+            return null;
+        }
+        return BADGE_UNLOCK_TIPS.getOrDefault(definition.id, definition.description);
     }
 
     // ==================== HELPER CLASSES ====================

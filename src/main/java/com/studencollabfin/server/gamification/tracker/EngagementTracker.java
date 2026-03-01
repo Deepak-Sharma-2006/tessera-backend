@@ -135,6 +135,9 @@ public class EngagementTracker {
             resetBadgeProgress(event.userId(), BADGE_ULTRA_RESPONDER);
         }
 
+        log.info("Evaluating Reply for First-Responder. PostID: {}, isFirst: {}, Latency: {}",
+                event.postId(), event.isFirstReplyToPost(), event.replyLatencySeconds());
+
         if (event.isFirstReplyToPost() && event.replyLatencySeconds() <= 1800) {
             upsertProgressAndMaybeAward(event.userId(), BADGE_FIRST_RESPONDER, 1);
         }
@@ -162,33 +165,30 @@ public class EngagementTracker {
     }
 
     private void upsertProgressAndMaybeAward(String userId, String badgeId, int incrementBy) {
-        HardModeBadgeService.BadgeMetadata metadata = hardModeBadgeService.getBadgeMetadata(badgeId);
+        try {
+            HardModeBadgeService.BadgeMetadata metadata = hardModeBadgeService.getBadgeMetadata(badgeId);
+            HardModeBadge tracker = ensureTrackerExists(userId, badgeId);
+            if (tracker == null) {
+                log.warn("[EngagementTracker] Tracker not found after ensure, user={}, badge={}", userId, badgeId);
+                return;
+            }
 
-        Query query = Query.query(Criteria.where("userId").is(userId).and("badgeId").is(badgeId));
-        Update update = new Update()
-                .setOnInsert("userId", userId)
-                .setOnInsert("badgeId", metadata.badgeId())
-                .setOnInsert("badgeName", metadata.badgeName())
-                .setOnInsert("tier", metadata.tier())
-                .setOnInsert("visualStyle", metadata.visualStyle())
-                .setOnInsert("progressCurrent", 0)
-                .setOnInsert("progressTotal", metadata.threshold())
-                .setOnInsert("isUnlocked", false)
-                .setOnInsert("isEquipped", false)
-                .setOnInsert("progressData", new HashMap<String, Object>())
-                .set("lastCheckedAt", LocalDateTime.now())
-                .inc("progressCurrent", incrementBy);
+            if (tracker.getProgressTotal() <= 0) {
+                tracker.setProgressTotal(metadata.threshold());
+            }
 
-        mongoTemplate.upsert(query, update, HardModeBadge.class);
+            int currentProgress = Math.max(tracker.getProgressCurrent(), 0);
+            tracker.setProgressCurrent(currentProgress + Math.max(incrementBy, 0));
+            tracker.setLastCheckedAt(LocalDateTime.now());
+            mongoTemplate.save(tracker);
 
-        HardModeBadge tracker = mongoTemplate.findOne(query, HardModeBadge.class);
-        if (tracker == null) {
-            return;
-        }
-
-        if (!tracker.isUnlocked() && tracker.getProgressCurrent() >= tracker.getProgressTotal()) {
-            hardModeBadgeService.awardBadge(userId, badgeId);
-            log.info("[EngagementTracker] Badge threshold met for user={}, badge={}", userId, badgeId);
+            if (!tracker.isUnlocked() && tracker.getProgressCurrent() >= tracker.getProgressTotal()) {
+                hardModeBadgeService.awardBadge(userId, badgeId);
+                log.info("[EngagementTracker] Badge threshold met for user={}, badge={}", userId, badgeId);
+            }
+        } catch (Exception ex) {
+            log.error("[EngagementTracker] Progress upsert failed for user={}, badge={}. Possible schema mismatch.",
+                    userId, badgeId, ex);
         }
     }
 

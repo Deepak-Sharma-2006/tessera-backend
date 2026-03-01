@@ -7,6 +7,7 @@ import com.studencollabfin.server.model.PostType;
 import com.studencollabfin.server.model.SocialPost;
 import com.studencollabfin.server.repository.CommentRepository;
 import com.studencollabfin.server.repository.PostRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -14,12 +15,14 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.HashMap;
 import java.util.Map;
 
 @Service
+@Slf4j
 public class CommentService {
     @Autowired
     private CommentRepository commentRepository;
@@ -60,28 +63,34 @@ public class CommentService {
     public Comment addComment(Comment comment) {
         LocalDateTime now = LocalDateTime.now();
         Post parentPost = getParentPost(comment.getPostId());
-        boolean hadExistingReplies = comment.getPostId() != null
-                && !comment.getPostId().isBlank()
-                && !commentRepository.findByPostId(comment.getPostId()).isEmpty();
+        long existingReplyCount = comment.getPostId() != null && !comment.getPostId().isBlank()
+                ? commentRepository.countByPostId(comment.getPostId())
+                : 0L;
 
-        long replyLatencySeconds = 0L;
-        if (parentPost != null && parentPost.getCreatedAt() != null) {
-            Duration latency = Duration.between(parentPost.getCreatedAt(), now);
-            if (!latency.isNegative()) {
-                replyLatencySeconds = latency.getSeconds();
-            }
+        String parentPostAuthorId = parentPost != null ? parentPost.getAuthorId() : null;
+        boolean isSelfReplyToOwnPost = parentPostAuthorId != null
+                && comment.getAuthorId() != null
+                && parentPostAuthorId.equals(comment.getAuthorId());
+
+        boolean isFirstReplyToPost = existingReplyCount == 0;
+        if (isSelfReplyToOwnPost && isFirstReplyToPost) {
+            isFirstReplyToPost = false;
+            log.info("[CommentService] First-reply badge check blocked for self-reply. postId={}, authorId={}",
+                    comment.getPostId(), comment.getAuthorId());
+        } else {
+            log.info("[CommentService] First-reply badge check evaluated. postId={}, existingReplies={}, isFirst={}",
+                    comment.getPostId(), existingReplyCount, isFirstReplyToPost);
         }
+
+        long replyLatencySeconds = calculateReplyLatencySecondsUtc(parentPost, now);
 
         comment.setCreatedAt(now);
         Comment savedComment = commentRepository.save(comment);
 
-        int parentPostTotalReplyCount = comment.getPostId() != null && !comment.getPostId().isBlank()
-                ? commentRepository.findByPostId(comment.getPostId()).size()
-                : 0;
+        int parentPostTotalReplyCount = (int) (existingReplyCount + 1);
 
         String parentPostType = getParentPostType(parentPost);
         String parentPostScope = normalizeParentPostScope(comment.getScope());
-        String parentPostAuthorId = parentPost != null ? parentPost.getAuthorId() : null;
 
         eventPublisher.publishEvent(new ReplyCreatedEvent(
                 comment.getAuthorId(),
@@ -92,7 +101,7 @@ public class CommentService {
                 parentPostScope,
                 parentPostAuthorId,
                 parentPostTotalReplyCount,
-                !hadExistingReplies,
+                isFirstReplyToPost,
                 replyLatencySeconds,
                 parentPost != null ? parentPost.getCreatedAt() : null,
                 now));
@@ -143,6 +152,18 @@ public class CommentService {
 
         Duration delta = Duration.between(post.getCreatedAt(), now);
         return !delta.isNegative() && delta.toMinutes() < 5;
+    }
+
+    private long calculateReplyLatencySecondsUtc(Post parentPost, LocalDateTime replyCreatedAt) {
+        if (parentPost == null || parentPost.getCreatedAt() == null || replyCreatedAt == null) {
+            return 0L;
+        }
+
+        long postEpochSeconds = parentPost.getCreatedAt().toEpochSecond(ZoneOffset.UTC);
+        long replyEpochSeconds = replyCreatedAt.toEpochSecond(ZoneOffset.UTC);
+        long deltaSeconds = replyEpochSeconds - postEpochSeconds;
+
+        return Math.max(deltaSeconds, 0L);
     }
 
     private boolean isHelpPost(Post post, Comment comment) {
