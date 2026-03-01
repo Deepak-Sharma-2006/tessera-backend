@@ -39,9 +39,18 @@ public class ModerationTracker {
     @Async
     @EventListener
     public void onUserReported(UserReportedEvent event) {
-        if (event == null
-                || event.targetUserId() == null || event.targetUserId().isBlank()
-                || event.reporterId() == null || event.reporterId().isBlank()) {
+        if (event == null) {
+            log.error("Aborting moderation trackers: userId is null");
+            return;
+        }
+
+        if (event.targetUserId() == null || event.targetUserId().isBlank()) {
+            log.error("Aborting moderation trackers: userId is null");
+            return;
+        }
+
+        if (event.reporterId() == null || event.reporterId().isBlank()) {
+            log.error("Aborting moderation trackers: userId is null");
             return;
         }
 
@@ -52,9 +61,18 @@ public class ModerationTracker {
     @Async
     @EventListener
     public void onDirectMessageSent(DirectMessageSentEvent event) {
-        if (event == null
-                || event.senderId() == null || event.senderId().isBlank()
-                || event.receiverId() == null || event.receiverId().isBlank()) {
+        if (event == null) {
+            log.error("Aborting silent-sentinel tracker: userId is null");
+            return;
+        }
+
+        if (event.senderId() == null || event.senderId().isBlank()) {
+            log.error("Aborting silent-sentinel tracker: userId is null");
+            return;
+        }
+
+        if (event.receiverId() == null || event.receiverId().isBlank()) {
+            log.error("Aborting silent-sentinel tracker: userId is null");
             return;
         }
 

@@ -64,7 +64,13 @@ public class EngagementTracker {
     @Async
     @EventListener
     public void onNotificationRead(NotificationReadEvent event) {
-        if (event == null || event.userId() == null || event.userId().isBlank()) {
+        if (event == null) {
+            log.error("Aborting event-vanguard tracker: userId is null");
+            return;
+        }
+
+        if (event.userId() == null || event.userId().isBlank()) {
+            log.error("Aborting event-vanguard tracker: userId is null");
             return;
         }
 
@@ -82,7 +88,13 @@ public class EngagementTracker {
     @Async
     @EventListener
     public void onPostCreated(PostCreatedEvent event) {
-        if (event == null || event.userId() == null || event.userId().isBlank()) {
+        if (event == null) {
+            log.error("Aborting resource-titan tracker: userId is null");
+            return;
+        }
+
+        if (event.userId() == null || event.userId().isBlank()) {
+            log.error("Aborting resource-titan tracker: userId is null");
             return;
         }
 
@@ -101,7 +113,13 @@ public class EngagementTracker {
         log.info("BREADCRUMB 3: Tracker received ReplyCreatedEvent for PostID: {}",
                 event != null ? event.postId() : null);
 
-        if (event == null || event.userId() == null || event.userId().isBlank()) {
+        if (event == null) {
+            log.error("Aborting reply-driven engagement trackers: userId is null");
+            return;
+        }
+
+        if (event.userId() == null || event.userId().isBlank()) {
+            log.error("Aborting reply-driven engagement trackers: userId is null");
             return;
         }
 

@@ -43,7 +43,13 @@ public class SystemTracker {
     @Async
     @EventListener
     public void onUserLogin(UserLoginEvent event) {
-        if (event == null || event.userId() == null || event.userId().isBlank()) {
+        if (event == null) {
+            log.error("Aborting streak-seeker-lvl3 tracker: userId is null");
+            return;
+        }
+
+        if (event.userId() == null || event.userId().isBlank()) {
+            log.error("Aborting streak-seeker-lvl3 tracker: userId is null");
             return;
         }
 
@@ -53,7 +59,13 @@ public class SystemTracker {
     @Async
     @EventListener
     public void onPollResolved(PollResolvedEvent event) {
-        if (event == null || event.userId() == null || event.userId().isBlank()) {
+        if (event == null) {
+            log.error("Aborting the-oracle-gm tracker: userId is null");
+            return;
+        }
+
+        if (event.userId() == null || event.userId().isBlank()) {
+            log.error("Aborting the-oracle-gm tracker: userId is null");
             return;
         }
 
@@ -67,7 +79,13 @@ public class SystemTracker {
     @Async
     @EventListener
     public void onProfileUpdated(ProfileUpdatedEvent event) {
-        if (event == null || event.userId() == null || event.userId().isBlank()) {
+        if (event == null) {
+            log.error("Aborting profile-perfectionist tracker: userId is null");
+            return;
+        }
+
+        if (event.userId() == null || event.userId().isBlank()) {
+            log.error("Aborting profile-perfectionist tracker: userId is null");
             return;
         }
 
