@@ -7,13 +7,9 @@ import com.studencollabfin.server.model.PostType;
 import com.studencollabfin.server.model.SocialPost;
 import com.studencollabfin.server.repository.CommentRepository;
 import com.studencollabfin.server.repository.PostRepository;
-import com.studencollabfin.server.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -36,9 +32,6 @@ public class CommentService {
     private AchievementService achievementService;
     @Autowired
     private PostRepository postRepository;
-
-    @Autowired
-    private UserRepository userRepository;
 
     @Autowired
     private ApplicationEventPublisher eventPublisher;
@@ -69,7 +62,11 @@ public class CommentService {
      * Add a comment - with proper categorization
      */
     public Comment addComment(Comment comment) {
-        String actorUserId = resolveCommentAuthorId(comment);
+        return addComment(comment, comment != null ? comment.getAuthorId() : null);
+    }
+
+    public Comment addComment(Comment comment, String userId) {
+        String actorUserId = userId != null ? userId.trim() : null;
         if (actorUserId == null || actorUserId.isBlank()) {
             log.error("[CommentService] Aborting comment add: unable to resolve non-null authorId for postId={}",
                     comment != null ? comment.getPostId() : null);
@@ -221,40 +218,6 @@ public class CommentService {
         }
 
         return rawScope;
-    }
-
-    private String resolveCommentAuthorId(Comment comment) {
-        if (comment != null && comment.getAuthorId() != null && !comment.getAuthorId().isBlank()) {
-            return comment.getAuthorId().trim();
-        }
-
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()) {
-            return null;
-        }
-
-        String principalName = null;
-        Object principal = auth.getPrincipal();
-        if (principal instanceof UserDetails userDetails) {
-            principalName = userDetails.getUsername();
-        } else if (principal instanceof String principalString && !"anonymousUser".equalsIgnoreCase(principalString)) {
-            principalName = principalString;
-        }
-
-        if ((principalName == null || principalName.isBlank()) && auth.getName() != null
-                && !auth.getName().isBlank()) {
-            principalName = auth.getName();
-        }
-
-        if (principalName == null || principalName.isBlank()) {
-            return null;
-        }
-
-        String normalized = principalName.trim();
-        return userRepository.findByEmail(normalized)
-                .map(com.studencollabfin.server.model.User::getId)
-                .or(() -> userRepository.findById(normalized).map(com.studencollabfin.server.model.User::getId))
-                .orElse(null);
     }
 
     /**

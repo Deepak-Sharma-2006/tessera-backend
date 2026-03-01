@@ -6,8 +6,11 @@ import com.studencollabfin.server.service.PostService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
+
+import java.security.Principal;
 
 @Controller
 @RequiredArgsConstructor
@@ -17,9 +20,15 @@ public class CommentWSController {
 
     @SuppressWarnings("null")
     @MessageMapping("/post.{postId}.comment")
-    public void handleComment(@DestinationVariable String postId, CommentRequest payload) {
+    public void handleComment(@DestinationVariable String postId, @Payload CommentRequest payload,
+            Principal principal) {
+        String userId = principal != null ? principal.getName() : null;
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalStateException("Unable to resolve authenticated user for WebSocket comment");
+        }
+
         // Save comment to comments collection
-        Comment saved = postService.addCommentToPost(postId, payload);
+        Comment saved = postService.addCommentToPost(postId, payload, userId);
 
         // Broadcast the saved comment
         java.util.Map<String, Object> envelope = new java.util.HashMap<>();

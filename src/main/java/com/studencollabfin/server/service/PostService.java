@@ -468,6 +468,11 @@ public class PostService {
     // Add a comment to a SocialPost. Comments are stored in the 'comments'
     // collection
     public Comment addCommentToPost(String postId, CommentRequest req) {
+        return addCommentToPost(postId, req, req != null ? req.getAuthorId() : null);
+    }
+
+    // Add a comment with explicit actor userId (used by WebSocket flow)
+    public Comment addCommentToPost(String postId, CommentRequest req, String userId) {
         Post post = getPostById(postId);
         if (!(post instanceof SocialPost)) {
             throw new RuntimeException("Post is not a social post: " + postId);
@@ -478,7 +483,7 @@ public class PostService {
         Comment comment = new Comment();
         comment.setPostId(postId);
         comment.setAuthorName(req.getAuthorName());
-        comment.setAuthorId(req.getAuthorId()); // ✅ CRITICAL: Set authorId for stat tracking
+        comment.setAuthorId(userId); // ✅ Use explicit actor userId passed from controller layer
         comment.setContent(req.getContent());
         comment.setCreatedAt(LocalDateTime.now());
         comment.setParentId(req.getParentId());
@@ -502,7 +507,7 @@ public class PostService {
         }
 
         // ✅ USE COMMENT SERVICE: This will track stats for hard-mode badges
-        Comment savedComment = commentService.addComment(comment);
+        Comment savedComment = commentService.addComment(comment, userId);
 
         // Update post with comment ID reference
         if (social.getCommentIds() == null) {
