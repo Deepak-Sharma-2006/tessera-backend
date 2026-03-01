@@ -96,12 +96,16 @@ public class ModerationTracker {
 
         progressData.put(REPORTS_BY_REPORTER_KEY, reportsByReporter);
         progressData.put(DM_BAN_UNTIL_KEY, dmBanUntil);
+        progressData.put("sanctionActive", hasActiveDmBan);
 
         tracker.setProgressData(progressData);
         tracker.setProgressCurrent(hasActiveDmBan ? tracker.getProgressTotal() : 0);
-        tracker.setUnlocked(hasActiveDmBan);
         tracker.setLastCheckedAt(now);
         mongoTemplate.save(tracker);
+
+        if (hasActiveDmBan && !tracker.isUnlocked() && tracker.getProgressCurrent() >= tracker.getProgressTotal()) {
+            hardModeBadgeService.awardBadge(targetUserId, BADGE_SPAM_ALERT_SANCTION);
+        }
 
         log.info("[ModerationTracker] DM moderation updated for target={}, reporter={}, activeBan={}",
                 targetUserId, reporterId, hasActiveDmBan);
@@ -129,6 +133,10 @@ public class ModerationTracker {
         recomputeSilentSentinelState(tracker);
         mongoTemplate.save(tracker);
 
+        if (!tracker.isUnlocked() && tracker.getProgressCurrent() >= tracker.getProgressTotal()) {
+            hardModeBadgeService.awardBadge(targetUserId, BADGE_SILENT_SENTINEL);
+        }
+
         log.info("[ModerationTracker] Silent Sentinel receiver blacklisted for target={}, reporter={}",
                 targetUserId, reporterId);
     }
@@ -151,6 +159,10 @@ public class ModerationTracker {
         tracker.setProgressData(progressData);
         recomputeSilentSentinelState(tracker);
         mongoTemplate.save(tracker);
+
+        if (!tracker.isUnlocked() && tracker.getProgressCurrent() >= tracker.getProgressTotal()) {
+            hardModeBadgeService.awardBadge(senderId, BADGE_SILENT_SENTINEL);
+        }
     }
 
     private void recomputeSilentSentinelState(HardModeBadge tracker) {
@@ -173,7 +185,6 @@ public class ModerationTracker {
         }
 
         tracker.setProgressCurrent(bestEligiblePairCount);
-        tracker.setUnlocked(bestEligiblePairCount >= tracker.getProgressTotal());
         tracker.setLastCheckedAt(LocalDateTime.now());
     }
 

@@ -3,6 +3,7 @@ package com.studencollabfin.server.config;
 import com.studencollabfin.server.model.User;
 import com.studencollabfin.server.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -23,6 +24,7 @@ import java.util.List;
 @Configuration
 @EnableWebSocketMessageBroker
 @RequiredArgsConstructor
+@Slf4j
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         private final JwtUtil jwtUtil;
         private final UserRepository userRepository;
@@ -82,8 +84,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                                                         null,
                                                         List.of(new SimpleGrantedAuthority("ROLE_USER")));
                                         accessor.setUser(authentication);
-                                } catch (Exception ignored) {
-                                        // Keep connection anonymous if token is invalid
+                                        String userId = user.getId();
+                                        log.info("BREADCRUMB WS: WebSocket Connected & Authenticated for UserID: {}",
+                                                        userId);
+                                } catch (Exception e) {
+                                        log.error("WebSocket CONNECT authentication failed", e);
                                 }
 
                                 return message;

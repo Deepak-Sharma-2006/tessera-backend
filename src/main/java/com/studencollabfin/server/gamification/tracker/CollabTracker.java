@@ -39,6 +39,7 @@ public class CollabTracker {
     private static final String TEAM_ENGINE_REPLIES_PER_ROOM_KEY = "teamEngineRepliesPerRoom";
     private static final String TEAM_ENGINE_QUALIFIED_ROOMS_KEY = "teamEngineQualifiedRooms";
     private static final String COLLAB_MASTER_DISTINCT_ROOMS_KEY = "collabMasterDistinctRooms";
+    private static final String LEAD_ARCHITECT_QUALIFIED_ROOMS_KEY = "leadArchitectQualifiedRooms";
     private static final String CROSS_DOMAIN_DISTINCT_BRANCHES_KEY = "crossDomainDistinctBranches";
 
     private final MongoTemplate mongoTemplate;
@@ -84,7 +85,11 @@ public class CollabTracker {
         }
 
         if (event.distinctCollegeCountAtFill() >= 4) {
-            upsertProgressAndMaybeAward(event.userId(), BADGE_LEAD_ARCHITECT, 1);
+            upsertDistinctRoomProgressAndAward(
+                    event.userId(),
+                    BADGE_LEAD_ARCHITECT,
+                    LEAD_ARCHITECT_QUALIFIED_ROOMS_KEY,
+                    event.roomId());
         }
     }
 

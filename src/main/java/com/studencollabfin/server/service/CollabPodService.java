@@ -912,6 +912,16 @@ public class CollabPodService {
         eventPublisher.publishEvent(new PodJoinedEvent(userId, podId, isFirstPod));
         eventPublisher.publishEvent(new CollabRoomParticipatedEvent(userId, podId, deriveAcademicBranch(pod)));
 
+        int distinctCollegeCountAtFill = calculateDistinctCollegeCountAtFill(updatedPod);
+        if (distinctCollegeCountAtFill >= 4) {
+            String roomOwnerId = updatedPod.getOwnerId() != null ? updatedPod.getOwnerId() : userId;
+            eventPublisher.publishEvent(new CollabRoomCreatedEvent(
+                    roomOwnerId,
+                    updatedPod.getId(),
+                    true,
+                    distinctCollegeCountAtFill));
+        }
+
         // ✅ SYNC USER BADGES: Ensure all badges are up-to-date after pod join
         try {
             @SuppressWarnings("null")

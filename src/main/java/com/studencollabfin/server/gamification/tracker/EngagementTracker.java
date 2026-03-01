@@ -98,6 +98,9 @@ public class EngagementTracker {
     @Async
     @EventListener
     public void onReplyCreated(ReplyCreatedEvent event) {
+        log.info("BREADCRUMB 3: Tracker received ReplyCreatedEvent for PostID: {}",
+                event != null ? event.postId() : null);
+
         if (event == null || event.userId() == null || event.userId().isBlank()) {
             return;
         }

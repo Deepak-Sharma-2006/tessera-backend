@@ -86,25 +86,32 @@ public class CommentService {
 
         comment.setCreatedAt(now);
         Comment savedComment = commentRepository.save(comment);
+        String postId = comment.getPostId();
 
         int parentPostTotalReplyCount = (int) (existingReplyCount + 1);
 
         String parentPostType = getParentPostType(parentPost);
         String parentPostScope = normalizeParentPostScope(comment.getScope());
-
-        eventPublisher.publishEvent(new ReplyCreatedEvent(
-                comment.getAuthorId(),
-                comment.getPostId(),
-                savedComment.getId(),
-                savedComment.getContent(),
-                parentPostType,
-                parentPostScope,
-                parentPostAuthorId,
-                parentPostTotalReplyCount,
-                isFirstReplyToPost,
-                replyLatencySeconds,
-                parentPost != null ? parentPost.getCreatedAt() : null,
-                now));
+        try {
+            log.info("BREADCRUMB 1: Comment saved. Preparing to publish ReplyCreatedEvent.");
+            eventPublisher.publishEvent(new ReplyCreatedEvent(
+                    comment.getAuthorId(),
+                    postId,
+                    savedComment.getId(),
+                    savedComment.getContent(),
+                    parentPostType,
+                    parentPostScope,
+                    parentPostAuthorId,
+                    parentPostTotalReplyCount,
+                    isFirstReplyToPost,
+                    replyLatencySeconds,
+                    parentPost != null ? parentPost.getCreatedAt() : null,
+                    now));
+            log.info("BREADCRUMB 2: ReplyCreatedEvent published successfully for PostID: {}", postId);
+        } catch (Exception e) {
+            log.error("FAILED to publish event: ", e);
+            throw e;
+        }
 
         // ✅ TRACK REPLY CONTEXT: Dispatch one contextual hard-mode reply event
         if (comment.getAuthorId() != null) {

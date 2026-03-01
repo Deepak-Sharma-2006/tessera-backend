@@ -98,6 +98,32 @@ public class HardModeBadgeService {
             Map.entry("pod-pioneer", "Join your first collaboration pod."),
             Map.entry("bridge-builder", "Send an inter-college/inter-domain DM."));
 
+    private static final Map<String, String> BADGE_ICON_NAMES = Map.ofEntries(
+            Map.entry("discussion-architect", "trophy"),
+            Map.entry("active-talker-elite", "flame"),
+            Map.entry("ultra-responder", "zap"),
+            Map.entry("midnight-legend", "moon"),
+            Map.entry("bridge-master", "bridge"),
+            Map.entry("doubt-destroyer", "sword"),
+            Map.entry("resource-titan", "gem"),
+            Map.entry("lead-architect", "building"),
+            Map.entry("team-engine", "wrench"),
+            Map.entry("first-responder", "target"),
+            Map.entry("streak-seeker-lvl3", "shield"),
+            Map.entry("collab-master-lvl3", "globe"),
+            Map.entry("voice-of-hub-lvl3", "megaphone"),
+            Map.entry("the-oracle-gm", "lightbulb"),
+            Map.entry("profile-perfectionist", "sparkles"),
+            Map.entry("silent-sentinel", "eye"),
+            Map.entry("campus-helper", "handshake"),
+            Map.entry("event-vanguard", "party-popper"),
+            Map.entry("cross-domain-pro", "graduation-cap"),
+            Map.entry("spam-alert-sanction", "alert-circle"),
+            Map.entry("founding-dev", "code"),
+            Map.entry("campus-catalyst", "megaphone"),
+            Map.entry("pod-pioneer", "sprout"),
+            Map.entry("bridge-builder", "bridge"));
+
     static {
         // Initialize all 20 hard-mode badges
         BADGE_DEFINITIONS.put("discussion-architect", new BadgeDefinition(
@@ -578,8 +604,8 @@ public class HardModeBadgeService {
                 return isProfileMaintained(user);
 
             case "the-oracle-gm":
-                // Correctly predicted 50 polls
-                return user.getStatsMap().getOrDefault("correctPolls", 0) >= 50;
+                // Correctly predicted 100 polls
+                return user.getStatsMap().getOrDefault("correctPolls", 0) >= 100;
 
             case "silent-sentinel":
                 // 500 replies and not invalidated by report event
@@ -599,6 +625,12 @@ public class HardModeBadgeService {
             case "spam-alert-sanction":
                 // Triggered by reports
                 return user.getReportCount() > 0;
+
+            case "founding-dev":
+                return user.isDev();
+
+            case "campus-catalyst":
+                return user.getRole() != null && "COLLEGE_HEAD".equalsIgnoreCase(user.getRole());
 
             default:
                 return false;
@@ -876,6 +908,7 @@ public class HardModeBadgeService {
             Map<String, Object> badgeInfo = new HashMap<>();
             badgeInfo.put("badgeId", definition.id);
             badgeInfo.put("badgeName", definition.name);
+            badgeInfo.put("iconName", getBadgeIconName(definition.id));
             badgeInfo.put("tier", definition.tier);
             badgeInfo.put("visualStyle", definition.visualStyle);
             badgeInfo.put("description", definition.description);
@@ -915,15 +948,28 @@ public class HardModeBadgeService {
 
     private void broadcastBadgeAddedEvent(String userId, HardModeBadge badge, String message) {
         try {
+            User user = userRepository.findById(userId).orElse(null);
+            int xp = user != null ? user.getXp() : 0;
+            int totalXp = user != null ? user.getTotalXp() : 0;
+            int level = user != null ? user.getLevel() : 0;
+
             messagingTemplate.convertAndSendToUser(
                     userId, "/queue/badge-unlock",
-                    Map.of(
-                            "badgeId", badge.getBadgeId(),
-                            "badgeName", badge.getBadgeName(),
-                            "tier", badge.getTier(),
-                            "visualStyle", badge.getVisualStyle(),
-                            "message", message,
-                            "timestamp", System.currentTimeMillis()));
+                    new HashMap<String, Object>() {
+                        {
+                            put("badgeId", badge.getBadgeId());
+                            put("badgeName", badge.getBadgeName());
+                            put("iconName", getBadgeIconName(badge.getBadgeId()));
+                            put("tier", badge.getTier());
+                            put("visualStyle", badge.getVisualStyle());
+                            put("unlocked", true);
+                            put("xp", xp);
+                            put("totalXp", totalXp);
+                            put("level", level);
+                            put("message", message);
+                            put("timestamp", System.currentTimeMillis());
+                        }
+                    });
         } catch (Exception e) {
             System.err.println("[HardModeBadgeService] ⚠️ WebSocket broadcast failed: " + e.getMessage());
         }
@@ -950,6 +996,13 @@ public class HardModeBadgeService {
             return null;
         }
         return BADGE_UNLOCK_TIPS.getOrDefault(definition.id, definition.description);
+    }
+
+    private String getBadgeIconName(String badgeId) {
+        if (badgeId == null || badgeId.isBlank()) {
+            return "award";
+        }
+        return BADGE_ICON_NAMES.getOrDefault(badgeId, "award");
     }
 
     // ==================== HELPER CLASSES ====================
