@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -141,8 +142,11 @@ public class CommentService {
     }
 
     private boolean isMidnightReply(LocalDateTime now) {
-        LocalTime time = now.toLocalTime();
-        return !time.isBefore(LocalTime.of(0, 0)) && time.isBefore(LocalTime.of(4, 0));
+        LocalTime istTime = now
+                .atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(ZoneId.of("Asia/Kolkata"))
+                .toLocalTime();
+        return !istTime.isBefore(LocalTime.of(2, 0)) && istTime.isBefore(LocalTime.of(4, 0));
     }
 
     private Post getParentPost(String postId) {

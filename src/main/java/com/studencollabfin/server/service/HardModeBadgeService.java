@@ -12,6 +12,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -23,6 +25,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class HardModeBadgeService {
+
+    private static final ZoneId ZONE_IST = ZoneId.of("Asia/Kolkata");
 
     private final HardModeBadgeRepository hardModeBadgeRepository;
     private final UserRepository userRepository;
@@ -279,7 +283,7 @@ public class HardModeBadgeService {
         if (user == null)
             return false;
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZONE_IST);
 
         // If lastUnlockDate is not today, reset count
         if (user.getLastUnlockDate() == null || !user.getLastUnlockDate().isEqual(today)) {
@@ -300,7 +304,7 @@ public class HardModeBadgeService {
         if (user == null)
             return 0;
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZONE_IST);
         if (user.getLastUnlockDate() == null || !user.getLastUnlockDate().isEqual(today)) {
             return 2;
         }
@@ -373,7 +377,7 @@ public class HardModeBadgeService {
         }
 
         user.setDailyUnlocksCount(user.getDailyUnlocksCount() + 1);
-        user.setLastUnlockDate(LocalDate.now());
+        user.setLastUnlockDate(LocalDate.now(ZONE_IST));
         userRepository.save(user);
 
         // Broadcast unlock via WebSocket
@@ -743,7 +747,7 @@ public class HardModeBadgeService {
         if (user == null)
             return;
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZONE_IST);
         LocalDate lastLogin = user.getLastLoginDate();
 
         if (lastLogin == null) {
@@ -774,12 +778,13 @@ public class HardModeBadgeService {
      * Scheduled task to run at midnight - reset daily unlock count and check
      * streaks.
      */
-    @Scheduled(cron = "0 0 0 * * *") // Every day at midnight
+    @Scheduled(cron = "0 0 0 * * *", zone = "Asia/Kolkata") // Every day at midnight IST
     public void midnightMaintenanceTask() {
         System.out.println("[HardModeBadgeService] 🌙 Running midnight maintenance...");
 
         // Unlock any pending badges from yesterday
         List<User> allUsers = userRepository.findAll();
+        LocalDate todayIst = LocalDate.now(ZONE_IST);
         for (User user : allUsers) {
             if (!user.getHardModeBadgesLocked().isEmpty()) {
                 String firstLockedBadge = user.getHardModeBadgesLocked().get(0);
@@ -788,7 +793,7 @@ public class HardModeBadgeService {
 
             // Check streak
             LocalDate lastLogin = user.getLastLoginDate();
-            if (lastLogin != null && !lastLogin.isEqual(LocalDate.now())) {
+            if (lastLogin != null && !lastLogin.isEqual(todayIst)) {
                 if (user.getLoginStreak() > 0) {
                     System.out.println("[HardModeBadgeService] ⚠️ Login streak broken for user: " + user.getId());
                     user.setLoginStreak(0);
@@ -804,7 +809,7 @@ public class HardModeBadgeService {
     /**
      * Scheduled task to reset weekly reply count every 7 days.
      */
-    @Scheduled(cron = "0 0 0 * * MON") // Every Monday at midnight
+    @Scheduled(cron = "0 0 0 * * MON", zone = "Asia/Kolkata") // Every Monday at midnight IST
     public void weeklyResetTask() {
         System.out.println("[HardModeBadgeService] 📅 Resetting weekly reply counts...");
         List<User> allUsers = userRepository.findAll();
@@ -979,8 +984,8 @@ public class HardModeBadgeService {
      * Calculate milliseconds until midnight for countdown timer.
      */
     private long getTimeUntilMidnight() {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime midnight = now.plusDays(1).toLocalDate().atStartOfDay();
+        ZonedDateTime now = ZonedDateTime.now(ZONE_IST);
+        ZonedDateTime midnight = now.plusDays(1).toLocalDate().atStartOfDay(ZONE_IST);
         return java.time.Duration.between(now, midnight).toMillis();
     }
 

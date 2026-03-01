@@ -4,6 +4,8 @@ import com.studencollabfin.server.gamification.event.PollResolvedEvent;
 import com.studencollabfin.server.gamification.event.ProfileUpdatedEvent;
 import com.studencollabfin.server.gamification.event.UserLoginEvent;
 import com.studencollabfin.server.model.HardModeBadge;
+import com.studencollabfin.server.model.User;
+import com.studencollabfin.server.repository.UserRepository;
 import com.studencollabfin.server.service.HardModeBadgeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,11 +17,9 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -29,7 +29,6 @@ import java.util.Map;
 public class SystemTracker {
 
     private static final ZoneId ZONE_IST = ZoneId.of("Asia/Kolkata");
-    private static final ZoneOffset ZONE_UTC = ZoneOffset.UTC;
 
     private static final String BADGE_STREAK_SEEKER = "streak-seeker-lvl3";
     private static final String BADGE_ORACLE = "the-oracle-gm";
@@ -39,6 +38,7 @@ public class SystemTracker {
 
     private final MongoTemplate mongoTemplate;
     private final HardModeBadgeService hardModeBadgeService;
+    private final UserRepository userRepository;
 
     @Async
     @EventListener
@@ -53,7 +53,7 @@ public class SystemTracker {
             return;
         }
 
-        upsertIstStreakProgressAndMaybeAward(event.userId(), event.loginTime());
+        upsertIstStreakProgressFromUserAndMaybeAward(event.userId());
     }
 
     @Async
@@ -127,10 +127,15 @@ public class SystemTracker {
         }
     }
 
-    private void upsertIstStreakProgressAndMaybeAward(String userId, LocalDateTime loginUtcTimestamp) {
-        LocalDateTime effectiveLoginUtc = loginUtcTimestamp != null ? loginUtcTimestamp : LocalDateTime.now();
-        LocalDateTime loginIst = toIst(effectiveLoginUtc);
-        LocalDate loginIstDate = loginIst.toLocalDate();
+    private void upsertIstStreakProgressFromUserAndMaybeAward(String userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            log.error("[SystemTracker] Aborting streak sync: user not found for userId={}", userId);
+            return;
+        }
+
+        int userStreak = Math.max(user.getLoginStreak(), 0);
+        String loginIstDateString = LocalDate.now(ZONE_IST).toString();
 
         HardModeBadge tracker = ensureTrackerExists(userId, BADGE_STREAK_SEEKER);
         if (tracker == null) {
@@ -142,52 +147,17 @@ public class SystemTracker {
             progressData = new HashMap<>();
         }
 
-        LocalDate previousIstDate = null;
-        LocalDateTime previousIstTimestamp = null;
-
-        Object rawPreviousDate = progressData.get(STREAK_LAST_LOGIN_DATE_IST_KEY);
-        if (rawPreviousDate instanceof String previousDateString) {
-            try {
-                previousIstDate = LocalDate.parse(previousDateString);
-            } catch (Exception ignored) {
-                previousIstDate = null;
-            }
-        }
-
-        Object rawPreviousTimestamp = progressData.get(STREAK_LAST_LOGIN_TIMESTAMP_IST_KEY);
-        if (rawPreviousTimestamp instanceof String previousTimestampString) {
-            try {
-                previousIstTimestamp = LocalDateTime.parse(previousTimestampString);
-            } catch (Exception ignored) {
-                previousIstTimestamp = null;
-            }
-        }
-
-        int nextProgress = tracker.getProgressCurrent();
-        if (previousIstDate == null) {
-            nextProgress = 1;
-        } else if (loginIstDate.isEqual(previousIstDate)) {
-            nextProgress = Math.max(1, tracker.getProgressCurrent());
-        } else if (loginIstDate.isEqual(previousIstDate.plusDays(1))) {
-            nextProgress = tracker.getProgressCurrent() + 1;
-        } else {
-            nextProgress = 1;
-        }
-
-        if (previousIstTimestamp != null) {
-            long hoursDelta = Duration.between(previousIstTimestamp, loginIst).toHours();
-            if (hoursDelta > 48) {
-                nextProgress = 1;
-            }
-        }
-
-        progressData.put(STREAK_LAST_LOGIN_DATE_IST_KEY, loginIstDate.toString());
-        progressData.put(STREAK_LAST_LOGIN_TIMESTAMP_IST_KEY, loginIst.toString());
+        progressData.put(STREAK_LAST_LOGIN_DATE_IST_KEY, loginIstDateString);
+        progressData.put(STREAK_LAST_LOGIN_TIMESTAMP_IST_KEY, LocalDateTime.now(ZONE_IST).toString());
 
         tracker.setProgressData(progressData);
-        tracker.setProgressCurrent(nextProgress);
+        tracker.setProgressCurrent(userStreak);
         tracker.setLastCheckedAt(LocalDateTime.now());
         mongoTemplate.save(tracker);
+
+        log.info(
+                "[SystemTracker] Synced streak-seeker progress from User.loginStreak. userId={}, userStreak={}, istDate={}",
+                userId, userStreak, loginIstDateString);
 
         if (!tracker.isUnlocked() && tracker.getProgressCurrent() >= tracker.getProgressTotal()) {
             hardModeBadgeService.awardBadge(userId, BADGE_STREAK_SEEKER);
@@ -216,9 +186,4 @@ public class SystemTracker {
         return mongoTemplate.findOne(query, HardModeBadge.class);
     }
 
-    private LocalDateTime toIst(LocalDateTime utcTimestamp) {
-        return utcTimestamp.atZone(ZONE_UTC)
-                .withZoneSameInstant(ZONE_IST)
-                .toLocalDateTime();
-    }
 }

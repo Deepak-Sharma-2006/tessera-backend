@@ -23,7 +23,6 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +34,6 @@ import java.util.regex.Pattern;
 public class EngagementTracker {
 
     private static final ZoneId ZONE_IST = ZoneId.of("Asia/Kolkata");
-    private static final ZoneOffset ZONE_UTC = ZoneOffset.UTC;
 
     private static final String BADGE_EVENT_VANGUARD = "event-vanguard";
     private static final String BADGE_ACTIVE_TALKER_ELITE = "active-talker-elite";
@@ -123,8 +121,8 @@ public class EngagementTracker {
             return;
         }
 
-        LocalDateTime replyUtc = event.replyCreatedAt() != null ? event.replyCreatedAt() : LocalDateTime.now();
-        LocalDateTime replyIst = toIst(replyUtc);
+        LocalDateTime replyServerTime = event.replyCreatedAt() != null ? event.replyCreatedAt() : LocalDateTime.now();
+        LocalDateTime replyIst = toIst(replyServerTime);
 
         upsertRollingWindowProgressAndAward(
                 event.userId(),
@@ -555,8 +553,8 @@ public class EngagementTracker {
         return URL_PATTERN.matcher(replyContent).find();
     }
 
-    private LocalDateTime toIst(LocalDateTime utcTimestamp) {
-        return utcTimestamp.atZone(ZONE_UTC)
+    private LocalDateTime toIst(LocalDateTime serverTimestamp) {
+        return serverTimestamp.atZone(ZoneId.systemDefault())
                 .withZoneSameInstant(ZONE_IST)
                 .toLocalDateTime();
     }
